@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Lazada SG Restock Bot",
+  "version": "1.0",
+  "description": "Automatically opens Lazada links from Discord and autoplaces order.",
+
+  "permissions": [
+    "tabs",
+    "storage",
+    "scripting",
+  "activeTab"
+  ],
+
+  "host_permissions": [
+    "*://*.lazada.sg/*",
+    "*://*.lazada.com/*",
+    "*://checkout.lazada.sg/*",
+    "*://discord.com/*",
+    "*://*.discord.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Lazada Bot"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://discord.com/*"],
+      "js": ["discord-content-script.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.lazada.sg/*",
+        "https://checkout.lazada.sg/*"
+      ],
+      "js": ["lazada-content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
