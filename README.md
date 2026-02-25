@@ -1,8 +1,10 @@
-🛒 Lazada Product Monitor + Discord Alert Bot
+**🛒 Lazada Product Monitor + Discord Alert Bot**
+
 A lightweight automation tool that monitors Lazada product pages and sends real-time Discord notifications when product status changes (e.g. checkout available, delay changes, captcha/punish page triggered).
 Built to avoid excessive refreshes while still detecting important page state changes.
 
-🚀 Features
+**🚀 Features**
+
 ✅ Monitor Lazada product pages
 ✅ Detect checkout availability
 ✅ Detect /tmd/punish (captcha page)
@@ -13,19 +15,22 @@ Product title (instead of raw URL)
 ✅ Adjustable refresh interval
 ✅ Avoids aggressive reload to reduce account punishment
 
-📦 Use Cases
+**📦 Use Cases**
+
 Monitoring limited-stock items
 Auto-alert when checkout page appears
 Notifying when captcha/punish page appears
 Tracking UI delay changes
 
-🛠 Tech Stack
+**🛠 Tech Stack**
+
 Python
 Selenium (Browser Automation)
 Discord Webhook API
 ChromeDriver
 
-📁 Project Structure
+**📁 Project Structure**
+
 lazada-monitor/
 │
 ├── main.py              # Main monitoring logic
@@ -33,7 +38,8 @@ lazada-monitor/
 ├── requirements.txt     # Python dependencies
 └── README.md
 
-⚙️ Installation
+**⚙️ Installation**
+
 1️⃣ Clone the repository
 git clone https://github.com/yourusername/lazada-monitor.git
 cd lazada-monitor
@@ -47,7 +53,7 @@ https://chromedriver.chromium.org/downloads
 
 Place it in your project folder or add it to PATH.
 
-🔧 Configuration
+**🔧 Configuration**
 
 Update config.py:
 PRODUCT_URL = "https://www.lazada.sg/your-product-link"
@@ -59,14 +65,16 @@ Refresh delay
 Discord ping type (@here / @yourname)
 Target page patterns (checkout / punish)
 
-🔔 Notification Logic
+**🔔 Notification Logic**
+
 The bot only sends alerts when:
 Product page state changes
 Checkout page appears
 /tmd/punish page appears (captcha required)
 It avoids sending repeated duplicate notifications.
 
-🧠 How It Works
+**🧠 How It Works**
+
 Launches headless Chrome
 Loads product page
 Extracts product title
@@ -77,7 +85,8 @@ Delay indicators
 Compares with previous state
 Sends Discord notification if changed
 
-⚠️ Important Notes
+**⚠️ Important Notes**
+
 Do NOT set refresh delay too low (recommended: 5–10 seconds minimum)
 Excessive refresh may trigger Lazada anti-bot protection
 If /punish page appears, manual captcha is required
