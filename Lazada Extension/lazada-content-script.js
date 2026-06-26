@@ -507,7 +507,18 @@ function handleAutoRetry() {
 // ===========================================================
 // INIT
 // ===========================================================
-(async function init() {
+// Hoisted declaration (NOT a named IIFE) so the activate_lazada message handler
+// can call init(). Guarded so the auto-injection run and the activate_lazada
+// trigger don't start the flow twice.
+let botStarted = false;
+
+async function init() {
+  if (botStarted) {
+    log("[INIT] Already started on this page — ignoring duplicate trigger.");
+    return;
+  }
+  botStarted = true;
+
   await loadSettings();
 
   if (lazSettings.enabled === false) {
@@ -548,4 +559,8 @@ function handleAutoRetry() {
   } else {
     log("[INIT] Not product or checkout page, doing nothing.");
   }
-})();
+}
+
+// Run on injection. The activate_lazada message may also call init(); the
+// botStarted guard makes the second call a no-op.
+init();
