@@ -190,6 +190,42 @@ function isCheckoutPage() {
   return ok;
 }
 
+// Order confirmation / "Thank you for your purchase!" page, e.g.
+// https://checkout.lazada.sg/order-received-new?orderId=...&payStatus=success
+function isOrderSuccessPage() {
+  return (
+    location.hostname.endsWith("lazada.sg") &&
+    (/\/order-received/i.test(location.pathname) ||
+      /payStatus=success/i.test(location.search))
+  );
+}
+
+function handleOrderSuccess() {
+  const params = new URLSearchParams(location.search);
+  const orderId =
+    params.get("orderId") || params.get("tradeOrderIds") || "";
+
+  const title = (document.title || "").trim();
+  const orderTxt = orderId ? ` Order #${orderId}` : "";
+
+  logBG(`@here ✅🎉 ORDER PLACED SUCCESSFULLY!${orderTxt}`);
+  log("[OrderSuccess]", { orderId, title, url: location.href });
+
+  // Auto-close this tab after the order, if enabled in settings.
+  if (lazSettings?.autoClose) {
+    const delayMs =
+      typeof lazSettings.autoCloseAfterMs === "number"
+        ? lazSettings.autoCloseAfterMs
+        : 10000;
+    logBG(`🧹 Auto-closing this tab in ${(delayMs / 1000).toFixed(0)}s.`);
+    try {
+      chrome.runtime.sendMessage({ type: "request_close_tab_after", delayMs });
+    } catch (e) {
+      console.warn("[LazadaBot CS] auto-close request failed:", e);
+    }
+  }
+}
+
 // ------------------------------
 // Human click (PointerEvents)
 // ------------------------------
@@ -542,6 +578,15 @@ async function init() {
       console.warn("[LazadaBot CS] captcha_alert send failed:", e);
     }
     return; // stop automation here — human takes over
+  }
+
+  // Order confirmation page — fire SUCCESS webhook and stop. MUST be checked
+  // before isCheckoutPage(), because the order-received URL is on
+  // checkout.lazada.sg and would otherwise be mistaken for the checkout page.
+  if (isOrderSuccessPage()) {
+    logBG("🎉 Order success page detected.");
+    handleOrderSuccess();
+    return;
   }
 
   if (isProductPage()) {
