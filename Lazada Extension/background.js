@@ -33,6 +33,38 @@ function log(...args) {
   console.log("[LazadaBot BG]", ...args);
 }
 
+// Force a window to the foreground so a freshly-opened restock/checkout tab is
+// never stuck minimized or behind other windows. Restores minimized windows but
+// preserves a maximized window (only normalizes when it was minimized).
+function bringWindowToFront(windowId) {
+  if (windowId == null) return;
+  chrome.windows.get(windowId, (win) => {
+    if (chrome.runtime.lastError || !win) return;
+    const update = { focused: true, drawAttention: true };
+    if (win.state === "minimized") update.state = "normal";
+    chrome.windows.update(windowId, update, () => {
+      if (chrome.runtime.lastError) {
+        console.warn("[LazadaBot BG] bringWindowToFront error:", chrome.runtime.lastError.message);
+      }
+    });
+  });
+}
+
+// Only open Lazada PRODUCT pages — never account (my.lazada.sg) or CDN/image URLs.
+function isLazadaProductUrl(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    if (!/\blazada\.sg$/i.test(host)) return false;
+    if (host.startsWith("my.") || host.includes("filebroker") || host.includes("cdn")) {
+      return false;
+    }
+    return /\/products\//i.test(u.pathname) && /\.html?$/i.test(u.pathname);
+  } catch (_) {
+    return false;
+  }
+}
+
 async function sendLog(message) {
   const settings = await getSettings();
 
@@ -111,6 +143,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         console.error("[TestMode] Error opening tab:", chrome.runtime.lastError.message);
       } else {
         console.log("[TestMode] Test Mode – Opened:", testUrl);
+        bringWindowToFront(tab.windowId);
       }
     });
   }
@@ -127,12 +160,7 @@ function handleCaptchaAlert(sender) {
   try {
     if (sender.tab && sender.tab.id != null) {
       chrome.tabs.update(sender.tab.id, { active: true });
-      if (sender.tab.windowId != null) {
-        chrome.windows.update(sender.tab.windowId, {
-          focused: true,
-          drawAttention: true
-        });
-      }
+      bringWindowToFront(sender.tab.windowId);
     }
   } catch (e) {
     console.warn("[LazadaBot BG] tab focus error:", e);
@@ -170,8 +198,8 @@ async function handleRestockLink(msg, sender) {
     return;
   }
 
-  if (!url || !url.includes("lazada.sg")) {
-    log("Ignoring non-Lazada URL", url);
+  if (!isLazadaProductUrl(url)) {
+    log("Ignoring non-product Lazada URL", url);
     return;
   }
 
@@ -205,6 +233,9 @@ async function handleRestockLink(msg, sender) {
     console.error("[LazadaBot BG] tab.create error:", chrome.runtime.lastError.message);
   } else {
     log("Created tab", tab.id, "for URL", url);
+
+    // Make sure the new tab is visible: focus + un-minimize its window.
+    bringWindowToFront(tab.windowId);
 
     // ⭐ NEW — Wait for the tab to fully load then activate Lazada automation
     chrome.tabs.onUpdated.addListener(function listener(tabId, changeInfo) {

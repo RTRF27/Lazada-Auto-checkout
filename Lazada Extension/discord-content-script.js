@@ -12,6 +12,26 @@ async function loadSettings() {
   settings = { ...(saved[SETTINGS_KEY] || {}) };
 }
 
+// Only Lazada PRODUCT pages should ever trigger the bot. Restock embeds also
+// contain my.lazada.sg (account) and filebroker-cdn.lazada.sg (image) links —
+// matching those made the bot open the wrong page and cooldown-block the real
+// product link.
+function isLazadaProductUrl(url) {
+  try {
+    const u = new URL(url, window.location.href);
+    const host = u.hostname.toLowerCase();
+    // must be a real lazada storefront host, not the CDN or account subdomain
+    if (!/\blazada\.sg$/i.test(host)) return false;
+    if (host.startsWith("my.") || host.includes("filebroker") || host.includes("cdn")) {
+      return false;
+    }
+    // product pages live under /products/...-....html  (e.g. i123-s456.html or pdp-i123-s456.html)
+    return /\/products\//i.test(u.pathname) && /\.html?$/i.test(u.pathname);
+  } catch (_) {
+    return false;
+  }
+}
+
 function getChannelIdFromUrl() {
   // URL format: https://discord.com/channels/<guild>/<channel>
   try {
@@ -54,8 +74,10 @@ function extractTitle(node, linkEl) {
 function handleNode(node) {
   if (!(node instanceof HTMLElement)) return;
 
-  const links = node.querySelectorAll('a[href*="lazada.sg"]');
-  if (!links.length) return;
+  // Grab only real product links (skip account / CDN / image links).
+  const allLinks = node.querySelectorAll('a[href*="lazada.sg"]');
+  const productLinks = [...allLinks].filter(a => isLazadaProductUrl(a.href));
+  if (!productLinks.length) return;
 
   const channelId = getChannelIdFromUrl();
   const messageText = node.innerText || "";
@@ -74,12 +96,12 @@ if (settings.channels && settings.channels.length > 0) {
     return;
   }
 
-  links.forEach(a => {
-    const href = a.getAttribute("href");
+  productLinks.forEach(a => {
+    const href = a.href; // resolved absolute URL
     if (!href || seenLinks.has(href)) return;
     seenLinks.add(href);
 
-    log("Detected Lazada link:", href);
+    log("Detected Lazada PRODUCT link:", href);
 
     chrome.runtime.sendMessage({
       type: "restock_link",
