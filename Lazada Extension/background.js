@@ -19,6 +19,38 @@ const defaultSettings = {
 
 let lastTabOpenTs = 0;
 
+// === AUTO RE-INJECT CONTENT SCRIPTS ON RELOAD ===
+// When the extension is reloaded/updated, content scripts already running in
+// open tabs become orphaned (their chrome.* calls fail). Without this, the bot
+// silently stops detecting restocks until you manually refresh each Discord/
+// Lazada tab. This re-injects fresh content scripts into matching open tabs.
+async function reinjectContentScripts() {
+  try {
+    const manifest = chrome.runtime.getManifest();
+    for (const cs of manifest.content_scripts || []) {
+      if (!cs.js || !cs.matches) continue;
+      let tabs = [];
+      try {
+        tabs = await chrome.tabs.query({ url: cs.matches });
+      } catch (_) {
+        continue;
+      }
+      for (const tab of tabs) {
+        if (!tab.id) continue;
+        if (tab.url && /^(chrome|edge|about|chrome-extension):/i.test(tab.url)) continue;
+        chrome.scripting
+          .executeScript({ target: { tabId: tab.id }, files: cs.js })
+          .then(() => console.log("[LazadaBot BG] Re-injected into tab", tab.id, tab.url))
+          .catch((e) => console.warn("[LazadaBot BG] Re-inject failed for tab", tab.id, e?.message));
+      }
+    }
+  } catch (e) {
+    console.warn("[LazadaBot BG] reinjectContentScripts error:", e);
+  }
+}
+
+chrome.runtime.onInstalled.addListener(reinjectContentScripts);
+
 // Helpers
 async function getSettings() {
   const saved = await chrome.storage.sync.get(SETTINGS_KEY);

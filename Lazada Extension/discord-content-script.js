@@ -1,7 +1,11 @@
 const SETTINGS_KEY = "lazadaBotSettings";
 
 let settings = null;
-let seenLinks = new Set();
+// href -> last-handled timestamp. Time-based so the SAME item restocking later
+// re-triggers, while the near-simultaneous duplicate posts from the multiple
+// monitor bots (Sparkles 320 / FBI / CEO) get collapsed into one.
+const seenLinks = new Map();
+const DEDUPE_TTL_MS = 90000; // 90s
 
 function log(...args) {
   console.log("[LazadaBot Discord CS]", ...args);
@@ -98,8 +102,12 @@ if (settings.channels && settings.channels.length > 0) {
 
   productLinks.forEach(a => {
     const href = a.href; // resolved absolute URL
-    if (!href || seenLinks.has(href)) return;
-    seenLinks.add(href);
+    if (!href) return;
+
+    const nowTs = Date.now();
+    const last = seenLinks.get(href);
+    if (last && (nowTs - last) < DEDUPE_TTL_MS) return; // duplicate within window
+    seenLinks.set(href, nowTs);
 
     log("Detected Lazada PRODUCT link:", href);
 
