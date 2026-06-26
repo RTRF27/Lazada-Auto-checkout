@@ -65,6 +65,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
   }
 
+  if (msg.type === "captcha_alert") {
+    handleCaptchaAlert(sender);
+    return false;
+  }
+
   if (msg.type === "trigger_test") {
   runTestMode();
   sendResponse({ ok: true });
@@ -113,6 +118,39 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   setInterval(() => {
     sendLog("🟢 LazadaBot: Standing by… waiting for restocks.");
   }, 30000);
+
+// === CAPTCHA ALERT ===
+// We never auto-solve the slider (that would defeat Lazada's anti-bot control).
+// We just make sure the human notices instantly: raise the tab/window and pop a
+// desktop notification.
+function handleCaptchaAlert(sender) {
+  try {
+    if (sender.tab && sender.tab.id != null) {
+      chrome.tabs.update(sender.tab.id, { active: true });
+      if (sender.tab.windowId != null) {
+        chrome.windows.update(sender.tab.windowId, {
+          focused: true,
+          drawAttention: true
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("[LazadaBot BG] tab focus error:", e);
+  }
+
+  try {
+    chrome.notifications.create("lazbot-captcha-" + Date.now(), {
+      type: "basic",
+      iconUrl: "icon128.png",
+      title: "🧩 Lazada CAPTCHA — action needed",
+      message: "Solve the slider puzzle now to continue checkout.",
+      priority: 2,
+      requireInteraction: true
+    });
+  } catch (e) {
+    console.warn("[LazadaBot BG] notification error:", e);
+  }
+}
 
 // === RESTOCK HANDLER ===
 async function handleRestockLink(msg, sender) {

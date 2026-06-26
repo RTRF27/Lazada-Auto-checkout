@@ -6,92 +6,123 @@
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>Lazada SG Bot</h1>
+  <div class="app">
 
-    <label class="row">
-      <span>Bot enabled</span>
-      <input type="checkbox" id="enabled">
-    </label>
-
-    <div class="section">
-    <label class="row">
-      <span>Test Mode (safe)</span>
-      <input type="checkbox" id="testMode">
-    </label>
-    <p class="hint">
-      When enabled, bot will go to checkout but will NOT place order.
-    </p>
-    <button id="runTestBtn">Run Test Mode Now</button>
-  </div>  
-
-    <div class="section">
-      <label for="keywords">Keywords filter (optional)</label>
-      <textarea id="keywords" rows="4"
-        placeholder="One keyword per line&#10;e.g. mega evolution&#10;e.g. booster box"></textarea>
-      <p class="hint">
-        Only messages containing at least one keyword will trigger the bot.
-        Leave empty to accept all Lazada links.
-      </p>
-    </div>
-
-    <div class="section">
-  <label for="channels">Allowed Discord Channel IDs (one per line)</label>
-  <textarea id="channels" rows="2" placeholder="123456789012345678&#10;987654321098765432"></textarea>
-  <p class="hint">Only these channels will trigger the bot. Leave empty to allow all.</p>
-</div>
-
-    <div class="section">
-      <label for="cooldown">Global cooldown between tabs (seconds)</label>
-      <input type="number" id="cooldown" min="0" step="1">
-    </div>
-
-    <div class="section">
-      <label class="row">
-        <span>Auto-retry when sold out</span>
-        <input type="checkbox" id="autoRetry">
-      </label>
-      <div class="row small-gap">
-        <span>Exact retry delay (s):</span>
-        <input type="number" id="retryDelay" min="1" step="1" class="short">
+    <header class="app-header">
+      <div class="logo">L</div>
+      <div class="title-wrap">
+        <h1>Lazada SG Bot</h1>
+        <span class="subtitle">Restock auto-checkout</span>
       </div>
-    </div>
-
-    <div class="section">
-      <label class="row">
-        <span>Auto-close tab after order</span>
-        <input type="checkbox" id="autoClose">
+      <label class="switch master" title="Enable / disable bot">
+        <input type="checkbox" id="enabled">
+        <span class="slider"></span>
       </label>
-      <div class="row small-gap">
-        <span>Close after (s):</span>
-        <input type="number" id="autoCloseAfter" min="1" step="1" class="short">
+    </header>
+
+    <main class="body">
+
+      <!-- Test mode -->
+      <section class="card">
+        <label class="row">
+          <div class="row-text">
+            <span class="row-title">Test mode</span>
+            <span class="row-sub">Goes to checkout but never places the order</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="testMode">
+            <span class="slider"></span>
+          </label>
+        </label>
+        <button id="runTestBtn" class="btn btn-ghost">▶ Run Test Now</button>
+      </section>
+
+      <!-- Filters -->
+      <section class="card">
+        <div class="field">
+          <label for="keywords">Keyword filter <span class="opt">optional</span></label>
+          <textarea id="keywords" rows="3"
+            placeholder="One keyword per line&#10;e.g. mega evolution&#10;e.g. booster box"></textarea>
+          <p class="hint">Only messages containing a keyword trigger the bot. Empty = all Lazada links.</p>
+        </div>
+
+        <div class="field">
+          <label for="channels">Allowed Discord channel IDs</label>
+          <textarea id="channels" rows="2"
+            placeholder="123456789012345678&#10;987654321098765432"></textarea>
+          <p class="hint">Only these channels trigger the bot. Empty = all channels.</p>
+        </div>
+      </section>
+
+      <!-- Timing -->
+      <section class="card">
+        <div class="field-inline">
+          <label for="cooldown">Cooldown between tabs</label>
+          <div class="num"><input type="number" id="cooldown" min="0" step="1"><span class="unit">ms</span></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <label class="row">
+          <div class="row-text">
+            <span class="row-title">Auto-retry when sold out</span>
+            <span class="row-sub">Keeps reloading until it restocks</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="autoRetry">
+            <span class="slider"></span>
+          </label>
+        </label>
+        <div class="field-inline sub">
+          <label for="retryDelay">Retry delay</label>
+          <div class="num"><input type="number" id="retryDelay" min="1" step="1"><span class="unit">s</span></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <label class="row">
+          <div class="row-text">
+            <span class="row-title">Auto-close tab after order</span>
+            <span class="row-sub">Tidies up once the order is placed</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="autoClose">
+            <span class="slider"></span>
+          </label>
+        </label>
+        <div class="field-inline sub">
+          <label for="autoCloseAfter">Close after</label>
+          <div class="num"><input type="number" id="autoCloseAfter" min="1" step="1"><span class="unit">s</span></div>
+        </div>
+      </section>
+
+      <!-- Webhooks -->
+      <section class="card">
+        <div class="field">
+          <label for="logWebhook">Discord log webhook</label>
+          <input type="text" id="logWebhook" placeholder="https://discord.com/api/webhooks/...">
+          <p class="hint">Every action & status update is posted here.</p>
+        </div>
+
+        <div class="field">
+          <label for="alertWebhook">Discord alert webhook <span class="opt">@here</span></label>
+          <input type="text" id="alertWebhook" placeholder="https://discord.com/api/webhooks/...">
+          <p class="hint">Urgent @here pings (captcha, checkout) go here — use a channel you don't mute.</p>
+        </div>
+      </section>
+
+      <div class="note">
+        🧩 Captcha sliders are <b>not</b> auto-solved. When one appears the bot
+        raises the tab, beeps, and pings @here so you can solve it instantly.
       </div>
-    </div>
 
-    <div class="section">
-    <label>Discord Webhook for Logging</label>
-    <input type="text" id="logWebhook" placeholder="https://discord.com/api/webhooks/...">
-    <p class="hint">
-      Bot will send every action & status update to this webhook.
-    </p>
-  </div>
+    </main>
 
-  <div class="section">
-  <label>Discord Webhook for Alerts (@here)</label>
-  <input type="text" id="alertWebhook" placeholder="https://discord.com/api/webhooks/...">
-  <p class="hint">
-    Any message containing @here will be sent to this webhook (recommended: a channel you DO NOT mute).
-  </p>
-</div>
+    <footer class="app-footer">
+      <button id="saveBtn" class="btn btn-primary">Save settings</button>
+      <p id="status" class="status"></p>
+    </footer>
 
-    <button id="saveBtn">Save</button>
-    <p id="status" class="status"></p>
-
-    <hr>
-    <p class="hint">
-      Install this extension in each Chrome profile.<br>
-      Each profile: log into a different Lazada SG account and open your Discord restock channel.
-    </p>
   </div>
 
   <script src="popup.js"></script>

@@ -58,6 +58,59 @@ function showTestBanner() {
   document.body.appendChild(div);
 }
 
+// Big, blinking, hard-to-miss banner so the user solves the slider captcha fast.
+function showCaptchaAlert() {
+  if (document.getElementById("lazbot-captcha-alert")) return;
+
+  const bar = document.createElement("div");
+  bar.id = "lazbot-captcha-alert";
+  bar.textContent = "🧩 CAPTCHA — SOLVE THE SLIDER PUZZLE NOW TO CONTINUE CHECKOUT";
+  Object.assign(bar.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    width: "100%",
+    padding: "16px",
+    background: "#e63946",
+    color: "#fff",
+    zIndex: "2147483647",
+    fontWeight: "800",
+    fontSize: "16px",
+    textAlign: "center",
+    letterSpacing: "0.5px",
+    boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
+    animation: "lazbotBlink 1s steps(2,start) infinite"
+  });
+
+  const style = document.createElement("style");
+  style.textContent = "@keyframes lazbotBlink{50%{opacity:.35}}";
+  document.head.appendChild(style);
+  document.body.appendChild(bar);
+
+  // Short audible beep loop via WebAudio (no asset needed).
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    let count = 0;
+    const beep = () => {
+      if (count++ > 12 || !document.getElementById("lazbot-captcha-alert")) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "square";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.08;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+      setTimeout(beep, 700);
+    };
+    beep();
+  } catch (e) {
+    // Autoplay may be blocked until the user interacts — banner + desktop
+    // notification still cover the alert.
+  }
+}
+
 async function getLazadaProductTitle() {
   // Try OG title first (usually very reliable)
   const og = document.querySelector('meta[property="og:title"]')?.content?.trim();
@@ -186,15 +239,46 @@ function isTrulyOutOfStock() {
     if (document.querySelector(sel)) return true;
   }
 
-  return Array.from(document.querySelectorAll("*"))
-    .some(el => {
-      const t = (el.innerText || "").trim().toLowerCase();
-      return (
-        t === "out of stock" ||
-        t === "sold out" ||
-        t === "currently unavailable"
-      );
-    });
+  // Cheap, targeted text scan — only look at the action-button area instead of
+  // walking every node on the page (the old version read innerText for *every*
+  // element on every tick, which was slow and could false-match unrelated copy).
+  const actionArea = document.querySelector(
+    ".pdp-product-operation, .pdp-block, #module_add_to_cart, .pdp-cart-concern"
+  ) || document.body;
+
+  const buttons = actionArea.querySelectorAll("button, .pdp-button");
+  for (const el of buttons) {
+    const t = (el.innerText || el.textContent || "").trim().toLowerCase();
+    if (
+      t === "out of stock" ||
+      t === "sold out" ||
+      t === "currently unavailable" ||
+      t === "notify me when available"
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Quick synchronous Buy Now lookup (used inside the fast retry loop).
+function findBuyNowButton() {
+  const buttons = document.querySelectorAll("button, .pdp-button");
+  for (const b of buttons) {
+    const txt = (b.innerText || b.textContent || "").trim();
+    if (/buy now/i.test(txt)) return b;
+  }
+  return null;
+}
+
+function isClickable(el) {
+  if (!el) return false;
+  if (el.disabled) return false;
+  if (el.getAttribute && el.getAttribute("aria-disabled") === "true") return false;
+  const cls = (el.className || "").toString().toLowerCase();
+  if (cls.includes("disabled") || cls.includes("out-of-stock")) return false;
+  return true;
 }
 
 // ===========================================================
@@ -296,32 +380,49 @@ async function waitForBuyNow() {
 
 async function runProductFlow() {
   log("📄 Product page logic running");
-  logBG("📄 Product page opened.");
-  logBG("🔍 Searching for Buy Now…");
+  logBG("📄 Product page opened — watching for Buy Now / restock…");
 
   window.scrollTo({ top: randInt(150, 300), behavior: "smooth" });
-  await mediumDelay();
 
-  if (isTrulyOutOfStock()) {
-    logBG("❌ TRUE OUT OF STOCK detected on product page.");
-    handleAutoRetry();
-    return;
+  // Active-watch window for THIS page load. Instead of searching once and
+  // giving up, we poll fast so that the instant the item restocks (button flips
+  // from disabled/sold-out to clickable) we fire immediately.
+  const pollMs = lazSettings?.pollIntervalMs || 200;
+  const watchMs = lazSettings?.productWatchMs || 20000;
+  const deadline = performance.now() + watchMs;
+  let ticks = 0;
+
+  while (performance.now() < deadline) {
+    ticks++;
+
+    // Bail out if the page navigated to a captcha/punish page mid-watch.
+    if (isPunishCaptchaPage()) {
+      logBG("🧩 Captcha appeared during product watch — stopping flow.");
+      return;
+    }
+
+    const buyNowBtn = findBuyNowButton();
+
+    if (buyNowBtn && isClickable(buyNowBtn)) {
+      buyNowBtn.scrollIntoView({ behavior: "instant", block: "center" });
+      realHumanClick(buyNowBtn, "BuyNow");
+      logBG(`✅ Buy Now clicked after ${ticks} checks!`);
+      logBG("@here 🛒 Buy Now clicked — checkout needs attention now!");
+      return;
+    }
+
+    // Only treat as sold-out (and trigger a fast reload) once we're confident:
+    // a sold-out marker is present AND there's no clickable Buy Now.
+    if (isTrulyOutOfStock() && !(buyNowBtn && isClickable(buyNowBtn))) {
+      if (ticks % 10 === 0) logBG("⏳ Still sold out — keeping watch…");
+    }
+
+    await wait(pollMs);
   }
 
-  const buyNowBtn = await waitForBuyNow();
-
-  if (!buyNowBtn) {
-    logBG("❌ Buy Now NOT FOUND after timeout.");
-    handleAutoRetry();
-    return;
-  }
-
-  buyNowBtn.scrollIntoView({ behavior: "smooth", block: "center" });
-  await wait(150);
-
-  realHumanClick(buyNowBtn, "BuyNow");
-  logBG("✅ Buy Now clicked successfully!");
-  logBG("@here Checkout need attention now!");
+  // Window elapsed with no clickable Buy Now → fast reload to fetch fresh stock.
+  logBG("🔁 No Buy Now in watch window — reloading for fresh stock.");
+  handleAutoRetry();
 }
 
 // ===========================================================
@@ -392,10 +493,14 @@ function handleAutoRetry() {
     return;
   }
 
-  // Uses the exact delay specified in your UI
-  const delay = lazSettings.retryDelayMs || 5000;
+  const base = lazSettings.retryDelayMs || 3000;
 
-  logBG(`Exact auto-reload scheduled in ${delay / 1000}s.`);
+  // Add a little jitter so reloads don't land on a perfectly fixed interval
+  // (a fixed cadence is one of the easiest bot tells for anti-bot systems).
+  const jitter = randInt(0, Math.min(800, Math.round(base * 0.25)));
+  const delay = base + jitter;
+
+  logBG(`🔄 Auto-reload in ~${(delay / 1000).toFixed(1)}s.`);
   setTimeout(() => location.reload(), delay);
 }
 
@@ -410,10 +515,22 @@ function handleAutoRetry() {
     return;
   }
 
-  // CAPTCHA / verification page alert
+  // CAPTCHA / verification page — we do NOT auto-solve the slider (that would be
+  // circumventing Lazada's anti-bot control). Instead we make it impossible to
+  // miss so a human can solve it in a second.
   if (isPunishCaptchaPage()) {
-    logBG(`@here 🧩 CAPTCHA page detected: ${location.pathname} — please click the captcha to continue.`);
-    return; // stop automation here
+    logBG(`@here 🧩 CAPTCHA / verification page detected — SOLVE THE SLIDER NOW: ${location.href}`);
+    showCaptchaAlert();
+    // Bring this tab to the front + fire a desktop notification + beep.
+    try {
+      chrome.runtime.sendMessage({
+        type: "captcha_alert",
+        url: location.href
+      });
+    } catch (e) {
+      console.warn("[LazadaBot CS] captcha_alert send failed:", e);
+    }
+    return; // stop automation here — human takes over
   }
 
   if (isProductPage()) {
