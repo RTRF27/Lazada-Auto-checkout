@@ -6,6 +6,38 @@ const SETTINGS_KEY = "lazadaBotSettings";
 let lazSettings = null;
 
 // ------------------------------
+// Detection vocab (ported from lazada_bot-main / stock-utils.js)
+// Kept here so restock + sold-out detection uses the same, more robust wording
+// the server-side monitor relied on. Tune these if a listing uses odd copy.
+// ------------------------------
+const UNAVAILABLE_TEXTS = [
+  "out of stock",
+  "sold out",
+  "currently unavailable",
+  "notify me when available",
+  "insufficient stock",
+  "no longer available",
+];
+
+const AVAILABLE_TEXTS = ["add to cart", "buy now"];
+
+// Anti-bot / "punish" page markers. These are SPECIFIC to the real challenge —
+// deliberately NOT the bare word "captcha", because Lazada ships its anti-bot
+// script (which mentions "captcha") on every normal page, which caused a false
+// alert on clean product pages. Used only to alert a human; never auto-solved.
+const BLOCKED_HTML_MARKERS = ["x5secdata", "/_____tmd_____/punish"];
+
+// Alibaba/Lazada "nocaptcha" (nc) slider widget. We only treat these as a real
+// challenge when the element is actually rendered and visible on the page.
+const CAPTCHA_SELECTORS = [
+  ".nc-container",
+  ".nc_wrapper",
+  "#nc_1_wrapper",
+  "[class*='nocaptcha']",
+  ".slidetounlock",
+];
+
+// ------------------------------
 // Logging
 // ------------------------------
 function log(...args) {
@@ -18,6 +50,21 @@ function logBG(msg) {
   } catch (e) {
     console.warn("[LazadaBot CS] logBG error:", e);
   }
+}
+
+// --- Dashboard telemetry -------------------------------------------------
+// Structured signals the background records into chrome.storage.local so the
+// live dashboard can show task state, an activity feed, and checkout wins.
+function reportStatus(state, extra = {}) {
+  try {
+    chrome.runtime.sendMessage({ type: "laz_status", state, url: location.href, ...extra });
+  } catch (e) { /* background asleep / context gone */ }
+}
+
+function reportEvent(kind, message, extra = {}) {
+  try {
+    chrome.runtime.sendMessage({ type: "laz_event", kind, message, url: location.href, ts: Date.now(), ...extra });
+  } catch (e) { /* ignore */ }
 }
 
 
@@ -168,6 +215,37 @@ function isPunishCaptchaPage() {
   return isPunishPath || (path.endsWith("/punish") && hasPunishQuery);
 }
 
+function isElementVisible(el) {
+  if (!el) return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+  const style = window.getComputedStyle(el);
+  return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+}
+
+// Complements the URL-based check above: catches a verification shown inline
+// without a matching punish URL. Kept strict to avoid false positives on normal
+// pages — triggers only on the specific punish markers, an actually-visible
+// slider widget, or explicit challenge wording. Detection only; human solves it.
+function isBlockedByHtml() {
+  // Specific punish markers (not the generic word "captcha").
+  const raw = (document.documentElement?.outerHTML || "").toLowerCase();
+  if (BLOCKED_HTML_MARKERS.some((marker) => raw.includes(marker))) return true;
+
+  // A slider/nocaptcha widget actually rendered and visible on the page.
+  for (const sel of CAPTCHA_SELECTORS) {
+    if (isElementVisible(document.querySelector(sel))) return true;
+  }
+
+  // Explicit challenge wording visible in the page body.
+  const bodyText = (document.body?.innerText || "").toLowerCase();
+  if (bodyText.includes("unusual traffic") || bodyText.includes("slide to verify")) {
+    return true;
+  }
+
+  return false;
+}
+
 function isProductPage() {
   const ok =
     location.hostname.endsWith("lazada.sg") &&
@@ -210,6 +288,22 @@ function handleOrderSuccess() {
 
   logBG(`@here ✅🎉 ORDER PLACED SUCCESSFULLY!${orderTxt}`);
   log("[OrderSuccess]", { orderId, title, url: location.href });
+
+  // Record the win for the dashboard: title, order id, and a best-effort amount
+  // parsed from the confirmation page (e.g. "$8.89" / "SGD 8.89").
+  const amtMatch = (document.body?.innerText || "").match(/(?:S?\$|SGD)\s?(\d+(?:\.\d{1,2})?)/i);
+  const amount = amtMatch ? parseFloat(amtMatch[1]) : null;
+  reportStatus("success", { title });
+  try {
+    chrome.runtime.sendMessage({
+      type: "checkout_win",
+      title,
+      orderId,
+      amount,
+      url: location.href,
+      ts: Date.now(),
+    });
+  } catch (e) { /* ignore */ }
 
   // Auto-close this tab after the order, if enabled in settings.
   if (lazSettings?.autoClose) {
@@ -285,12 +379,7 @@ function isTrulyOutOfStock() {
   const buttons = actionArea.querySelectorAll("button, .pdp-button");
   for (const el of buttons) {
     const t = (el.innerText || el.textContent || "").trim().toLowerCase();
-    if (
-      t === "out of stock" ||
-      t === "sold out" ||
-      t === "currently unavailable" ||
-      t === "notify me when available"
-    ) {
+    if (UNAVAILABLE_TEXTS.includes(t)) {
       return true;
     }
   }
@@ -339,17 +428,15 @@ function findPlaceOrderMatches() {
     }
   }
 
-  // Log first few matches to Discord so we can see what the page looks like
+  // Console-only (NOT logBG) — this runs every ~150ms while polling, so sending
+  // it to the Discord webhook spammed ~200 messages per checkout and risked
+  // rate-limiting the important @here success/captcha/OC3 pings.
   if (matches.length) {
     const preview = matches
       .slice(0, 5)
-      .map((m, i) =>
-        `#${i + 1}: text="${m.text}" spm="${m.spm}" class="${m.cls}"`
-      )
+      .map((m, i) => `#${i + 1}: text="${m.text}" spm="${m.spm}" class="${m.cls}"`)
       .join("\n");
-    logBG(`🔎 PLACE ORDER matches (${matches.length}):\n${preview}`);
-  } else {
-    logBG("🔎 PLACE ORDER matches: none this tick.");
+    log(`🔎 PLACE ORDER matches (${matches.length}):\n${preview}`);
   }
 
   return matches;
@@ -417,6 +504,8 @@ async function waitForBuyNow() {
 async function runProductFlow() {
   log("📄 Product page logic running");
   logBG("📄 Product page opened — watching for Buy Now / restock…");
+  reportStatus("watching");
+  waitForTitle().then((t) => reportStatus("watching", { title: t }));
 
   window.scrollTo({ top: randInt(150, 300), behavior: "smooth" });
 
@@ -431,26 +520,48 @@ async function runProductFlow() {
   while (performance.now() < deadline) {
     ticks++;
 
-    // Bail out if the page navigated to a captcha/punish page mid-watch.
-    if (isPunishCaptchaPage()) {
-      logBG("🧩 Captcha appeared during product watch — stopping flow.");
+    // Bail out if the page navigated to a captcha/punish page mid-watch, or if
+    // an inline verification appeared. A human takes over from here.
+    if (isPunishCaptchaPage() || isBlockedByHtml()) {
+      logBG("🧩 Captcha appeared during product watch — alerting human, stopping flow.");
+      showCaptchaAlert();
       return;
     }
 
     const buyNowBtn = findBuyNowButton();
 
     if (buyNowBtn && isClickable(buyNowBtn)) {
+      // Remember this product URL so checkout can return here to re-watch if the
+      // item sells out at the payment page (OC3 / out of stock).
+      try {
+        chrome.storage.local.set({ lazLastProductUrl: location.href });
+      } catch (e) {
+        console.warn("[LazadaBot CS] could not save product URL:", e);
+      }
       buyNowBtn.scrollIntoView({ behavior: "instant", block: "center" });
       realHumanClick(buyNowBtn, "BuyNow");
       logBG(`✅ Buy Now clicked after ${ticks} checks!`);
       logBG("@here 🛒 Buy Now clicked — checkout needs attention now!");
+      reportStatus("buy_now");
+      reportEvent("buy_now", "🛒 Buy Now clicked — in stock!");
+      // If this was a background direct-watch tab, surface it so the human sees
+      // the checkout (and any captcha) right away.
+      try {
+        chrome.runtime.sendMessage({ type: "request_focus" });
+      } catch (e) {
+        console.warn("[LazadaBot CS] request_focus failed:", e);
+      }
       return;
     }
 
     // Only treat as sold-out (and trigger a fast reload) once we're confident:
     // a sold-out marker is present AND there's no clickable Buy Now.
     if (isTrulyOutOfStock() && !(buyNowBtn && isClickable(buyNowBtn))) {
-      if (ticks % 10 === 0) logBG("⏳ Still sold out — keeping watch…");
+      // ~every 5s at the default 200ms poll (kept light to avoid webhook spam).
+      if (ticks % 25 === 0) {
+        logBG("⏳ Still sold out — keeping watch…");
+        reportStatus("sold_out");
+      }
     }
 
     await wait(pollMs);
@@ -487,14 +598,100 @@ async function waitForCheckoutUI() {
   return false;
 }
 
+// Detect the checkout-time out-of-stock failure (Lazada reason code OC3, shown
+// after Buy Now when the item sells out before Place Order completes). Returns a
+// short reason string if found, else null. We prioritise the very specific OC3
+// code, then explicit out-of-stock wording inside an error/toast/dialog so we
+// don't false-match "out of stock" copy elsewhere on the page.
+function getCheckoutStockError() {
+  const bodyText = document.body?.innerText || "";
+
+  if (/\bOC3\b/.test(bodyText)) return "OC3";
+
+  const errorAreas = document.querySelectorAll(
+    "[class*='toast'],[class*='Toast'],[class*='dialog'],[class*='Dialog']," +
+    "[class*='error'],[class*='Error'],[class*='notice'],[class*='Notice'],[role='alert']"
+  );
+  for (const el of errorAreas) {
+    const t = (el.innerText || "").toLowerCase();
+    if (
+      t.includes("out of stock") ||
+      t.includes("sold out") ||
+      t.includes("insufficient stock") ||
+      t.includes("no longer available")
+    ) {
+      return (el.innerText || "").trim().replace(/\s+/g, " ").slice(0, 120);
+    }
+  }
+  return null;
+}
+
+let checkoutOOSHandled = false;
+
+async function handleCheckoutOutOfStock(reason) {
+  if (checkoutOOSHandled) return;
+  checkoutOOSHandled = true;
+
+  logBG(`@here ❌ CHECKOUT OUT OF STOCK (${reason}) — item sold out at payment page.`);
+  reportStatus("sold_out");
+  reportEvent("oos", `❌ Out of stock at checkout (${reason})`);
+
+  if (lazSettings?.autoRetry === false) {
+    logBG("♻️ Auto-retry disabled — staying on checkout page.");
+    return;
+  }
+
+  let productUrl = "";
+  try {
+    const saved = await chrome.storage.local.get("lazLastProductUrl");
+    productUrl = saved?.lazLastProductUrl || "";
+  } catch (_) {}
+
+  if (!productUrl) {
+    logBG("⚠️ No saved product URL — can't auto-rewatch. Re-open the product link to retry.");
+    return;
+  }
+
+  const base = lazSettings?.retryDelayMs || 3000;
+  const jitter = randInt(0, Math.min(800, Math.round(base * 0.25)));
+  const delay = base + jitter;
+  logBG(`↩️ Returning to product page in ~${(delay / 1000).toFixed(1)}s to re-watch for restock.`);
+  setTimeout(() => { location.href = productUrl; }, delay);
+}
+
+// Poll the checkout page for an OOS/OC3 error for a few seconds. If the order
+// instead succeeds, the page navigates away and this context is discarded.
+async function watchForCheckoutStockError(maxMs = 8000) {
+  const start = performance.now();
+  while (performance.now() - start < maxMs) {
+    const reason = getCheckoutStockError();
+    if (reason) {
+      await handleCheckoutOutOfStock(reason);
+      return true;
+    }
+    await wait(300);
+  }
+  return false;
+}
+
 async function runCheckoutFlow() {
   // Added the @here ping at the start of the checkout flow
   logBG("@here 🚨 💳 CHECKOUT PAGE DETECTED! Proceeding to place order...");
+  reportStatus("checkout");
+  reportEvent("checkout", "💳 Checkout page reached");
 
   const uiReady = await waitForCheckoutUI();
   if (!uiReady) return;
 
   await wait(500);
+
+  // The item may already be flagged out of stock before we even click.
+  const preError = getCheckoutStockError();
+  if (preError) {
+    await handleCheckoutOutOfStock(preError);
+    return;
+  }
+
   logBG("🔍 Lazada UI ready — searching for PLACE ORDER NOW…");
 
   logBG("🔍 Searching for PLACE ORDER NOW…");
@@ -518,6 +715,261 @@ async function runCheckoutFlow() {
 
   realHumanClick(btn, "PlaceOrder");
   logBG("✅ PLACE ORDER click dispatched!");
+
+  // After clicking, either the order succeeds (page navigates to the success
+  // page) or Lazada blocks it with an OOS/OC3 error. Watch for the error; if it
+  // appears, alert and go back to the product page to re-watch for restock.
+  watchForCheckoutStockError();
+}
+
+// ===========================================================
+//  SHOP PAGE – NEW RELEASE WATCHER
+// ===========================================================
+// Reloads a shop listing page on an interval, scrapes every product card, and
+// fires the normal product flow for cards that match your keywords. Built for
+// timed drops: the item usually appears on the shop grid seconds before anyone
+// has the direct product URL to paste anywhere.
+//
+// State lives in chrome.storage.local (NOT memory) because this page reloads
+// itself — module-level variables are wiped on every cycle.
+const SHOP_SEEN_KEY = "lazShopSeen"; // { [shopKey]: { baseline: [ids], ts } }
+
+function shopKeyFromUrl(url) {
+  try {
+    const u = new URL(url, location.href);
+    return (u.hostname + u.pathname.replace(/\/+$/, "")).toLowerCase();
+  } catch (_) {
+    return "";
+  }
+}
+
+function isShopPage() {
+  return location.hostname.endsWith("lazada.sg") && /^\/shop\//i.test(location.pathname);
+}
+
+// "…/products/pdp-i13733405534-s124676139765.html" -> "13733405534-124676139765"
+function productIdFromUrl(url) {
+  try {
+    const u = new URL(url, location.href);
+    if (!/\/products\//i.test(u.pathname)) return null;
+    const m = u.pathname.match(/i(\d+)(?:-s(\d+))?\.html?$/i);
+    if (!m) return null;
+    return m[2] ? `${m[1]}-${m[2]}` : m[1];
+  } catch (_) {
+    return null;
+  }
+}
+
+// Some Lazada URLs carry the product name in the slug, which is worth matching
+// against as well. Note the Pokémon store does NOT: its links are bare
+// "pdp-i<id>-s<sku>.html", so this returns nothing useful there and img[alt] is
+// what actually carries the name. Kept as a fallback for shops that do.
+function slugWordsFromUrl(url) {
+  try {
+    const u = new URL(url, location.href);
+    const words = decodeURIComponent(u.pathname)
+      .replace(/.*\/products\//i, " ")
+      .replace(/-?i\d+(-s\d+)?\.html?$/i, "")
+      .replace(/[-_/]+/g, " ")
+      .toLowerCase()
+      .trim();
+    // Bare "pdp" is Lazada's page-type prefix, not part of any product name —
+    // leaving it in would make "pdp" a keyword that matches every listing.
+    return words === "pdp" ? "" : words.replace(/^pdp\s+/, "");
+  } catch (_) {
+    return "";
+  }
+}
+
+// Climb from the anchor until we hit a node with enough text to be the card
+// (title + price + rating). Lazada's class names are hashed and change between
+// deploys, so walking up beats hard-coding a card selector.
+function cardTextFor(anchor) {
+  let node = anchor;
+  for (let i = 0; i < 5 && node; i++) {
+    const t = (node.innerText || "").trim();
+    if (t.length > 15) return t;
+    node = node.parentElement;
+  }
+  return (anchor.innerText || "").trim();
+}
+
+function productInfoFromAnchor(a) {
+  const id = productIdFromUrl(a.href);
+  if (!id) return null;
+
+  // On the Pokémon store every card's name lives in img[alt] — no anchor carries
+  // a title attr, and the visible text is CSS-ellipsised. alt holds the complete
+  // name, so it's what keywords get compared against. The others are fallbacks
+  // for differently-built shop pages.
+  let title = (a.getAttribute("title") || "").trim();
+  if (!title) title = (a.querySelector("img")?.getAttribute("alt") || "").trim();
+
+  const cardText = cardTextFor(a);
+  if (!title || title.length < 4) {
+    title =
+      cardText
+        .split("\n")
+        .map((s) => s.trim())
+        .find((s) => s.length >= 4 && !/^(?:S?\$|SGD)/i.test(s)) || title;
+  }
+
+  // Nameless anchors are decorative shop banners that happen to link to a
+  // product (image only: no alt, no title, no text). We can't keyword-match
+  // them, and a banner's real listing has its own card in the grid anyway — so
+  // dropping them keeps banners from eating the "max items to open" budget.
+  if (title.length < 4) return null;
+
+  const priceMatch = cardText.match(/(?:S?\$|SGD)\s?([\d,]+(?:\.\d{1,2})?)/i);
+
+  return {
+    id,
+    url: a.href,
+    title: title.replace(/\s+/g, " ").trim(),
+    price: priceMatch ? parseFloat(priceMatch[1].replace(/,/g, "")) : null,
+    haystack: `${title} ${slugWordsFromUrl(a.href)}`.toLowerCase().trim(),
+  };
+}
+
+function scrapeShopProducts() {
+  const byId = new Map();
+  for (const a of document.querySelectorAll('a[href*="/products/"]')) {
+    const info = productInfoFromAnchor(a);
+    // Each card has several anchors (image, title, price) — first one wins.
+    if (info && !byId.has(info.id)) byId.set(info.id, info);
+  }
+  return [...byId.values()];
+}
+
+// The grid renders progressively. Wait until the card count stops growing so we
+// don't snapshot a half-rendered page as the baseline and then "discover" the
+// rest of the shop as fake new releases.
+async function waitForShopProducts(maxMs = 10000) {
+  const start = performance.now();
+  let list = [];
+  let prevCount = -1;
+  let stableTicks = 0;
+
+  while (performance.now() - start < maxMs) {
+    list = scrapeShopProducts();
+    if (list.length > 0 && list.length === prevCount) {
+      if (++stableTicks >= 2) return list; // held steady ~600ms
+    } else {
+      stableTicks = 0;
+    }
+    prevCount = list.length;
+    await wait(300);
+  }
+  return list;
+}
+
+// A keyword LINE matches when every word in it appears somewhere in the product
+// name (order-independent), and the product matches when ANY line does. So
+// "first partner" and "mega evolution" on two lines means "either of these".
+function lineMatches(line, haystack) {
+  const tokens = line.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return false;
+  return tokens.every((t) => haystack.includes(t));
+}
+
+function shopProductMatches(p, settings) {
+  const include = (settings.shopKeywords || []).map((k) => k.trim()).filter(Boolean);
+  const exclude = (settings.shopExcludeKeywords || []).map((k) => k.trim()).filter(Boolean);
+
+  if (exclude.some((line) => lineMatches(line, p.haystack))) return false;
+  // No keywords = match every new listing on the shop.
+  if (!include.length) return true;
+  return include.some((line) => lineMatches(line, p.haystack));
+}
+
+async function runShopFlow() {
+  const key = shopKeyFromUrl(location.href);
+
+  if (isPunishCaptchaPage() || isBlockedByHtml()) {
+    logBG("@here 🧩 CAPTCHA on the shop page — solve the slider to resume the drop watch.");
+    reportStatus("captcha");
+    reportEvent("captcha", "🧩 CAPTCHA on shop watch page");
+    showCaptchaAlert();
+    try {
+      chrome.runtime.sendMessage({ type: "captcha_alert", url: location.href });
+    } catch (e) {
+      console.warn("[LazadaBot CS] captcha_alert send failed:", e);
+    }
+    return; // no reload — a human has to clear this first
+  }
+
+  reportStatus("watching", { title: `🏬 Shop watch — ${key.replace(/^www\.lazada\.sg\/shop\//, "")}` });
+
+  // Nudge lazy-rendered rows into the DOM, then return to the top so the next
+  // reload starts clean.
+  window.scrollTo({ top: 600, behavior: "instant" });
+  await wait(250);
+  window.scrollTo({ top: 0, behavior: "instant" });
+
+  const products = await waitForShopProducts();
+
+  if (!products.length) {
+    logBG("⚠️ Shop watch: no product cards found — retrying.");
+    scheduleShopReload();
+    return;
+  }
+
+  const store = await chrome.storage.local.get(SHOP_SEEN_KEY);
+  const seenAll = store[SHOP_SEEN_KEY] || {};
+  let entry = seenAll[key];
+
+  // First pass after arming: everything currently listed is "old". Only things
+  // that show up AFTER this snapshot count as the drop.
+  if (!entry) {
+    entry = { baseline: products.map((p) => p.id), ts: Date.now() };
+    seenAll[key] = entry;
+    await chrome.storage.local.set({ [SHOP_SEEN_KEY]: seenAll });
+    logBG(`📋 Shop watch armed — ${entry.baseline.length} existing listings ignored. Watching for new drops…`);
+    reportEvent("info", `📋 Shop baseline set (${entry.baseline.length} listings)`);
+    scheduleShopReload();
+    return;
+  }
+
+  const baseline = new Set(entry.baseline || []);
+  const onlyNew = lazSettings?.shopOnlyNew !== false;
+  const maxPrice = Number(lazSettings?.shopMaxPrice) || 0;
+
+  const hits = [];
+  for (const p of products) {
+    if (onlyNew && baseline.has(p.id)) continue;
+    if (!shopProductMatches(p, lazSettings || {})) continue;
+    if (maxPrice > 0 && p.price != null && p.price > maxPrice) continue;
+    hits.push(p);
+  }
+
+  if (hits.length) {
+    // The background owns dedupe + the open cap, so re-reporting the same hit on
+    // every reload is safe — and means a hit is never lost if the cap frees up.
+    for (const p of hits) {
+      logBG(`@here 🎯 NEW DROP MATCH: ${p.title}${p.price != null ? ` — $${p.price}` : ""}`);
+      try {
+        chrome.runtime.sendMessage({
+          type: "shop_hit",
+          id: p.id,
+          url: p.url,
+          title: p.title,
+          price: p.price,
+        });
+      } catch (e) {
+        console.warn("[LazadaBot CS] shop_hit send failed:", e);
+      }
+    }
+  }
+
+  scheduleShopReload();
+}
+
+function scheduleShopReload() {
+  // Floor the interval: hammering the shop grid is the fastest way to get the
+  // whole session thrown onto a punish/captcha page mid-drop.
+  const base = Math.max(1500, Number(lazSettings?.shopRefreshMs) || 4000);
+  const delay = base + randInt(0, Math.round(base * 0.25)); // jitter — a fixed cadence is a bot tell
+  setTimeout(() => location.reload(), delay);
 }
 
 // ===========================================================
@@ -565,8 +1017,10 @@ async function init() {
   // CAPTCHA / verification page — we do NOT auto-solve the slider (that would be
   // circumventing Lazada's anti-bot control). Instead we make it impossible to
   // miss so a human can solve it in a second.
-  if (isPunishCaptchaPage()) {
-    logBG(`@here 🧩 CAPTCHA / verification page detected — SOLVE THE SLIDER NOW: ${location.href}`);
+  if (isPunishCaptchaPage() || isBlockedByHtml()) {
+    logBG(`@here 🧩 CAPTCHA / verification detected — SOLVE THE SLIDER NOW: ${location.href}`);
+    reportStatus("captcha");
+    reportEvent("captcha", "🧩 CAPTCHA — needs a human to solve the slider");
     showCaptchaAlert();
     // Bring this tab to the front + fire a desktop notification + beep.
     try {
@@ -586,6 +1040,29 @@ async function init() {
   if (isOrderSuccessPage()) {
     logBG("🎉 Order success page detected.");
     handleOrderSuccess();
+    return;
+  }
+
+  // Shop listing page — only act when this exact shop is on the watchlist, so
+  // casually browsing another Lazada shop never starts a reload loop.
+  if (isShopPage()) {
+    const armed =
+      lazSettings.shopWatchEnabled &&
+      (lazSettings.shopUrls || []).some(
+        (u) => shopKeyFromUrl(u) === shopKeyFromUrl(location.href)
+      );
+
+    if (!armed) {
+      log("[INIT] Shop page, but not an armed watch target — doing nothing.");
+      return;
+    }
+
+    logBG("🚀 Starting SHOP drop watch.");
+    runShopFlow().catch((err) => {
+      console.error("[LazadaBot SHOP ERROR]", err);
+      logBG(`❌ Error in shop flow: ${err}`);
+      scheduleShopReload(); // keep the watch alive through a transient DOM error
+    });
     return;
   }
 

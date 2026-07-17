@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LAZADA // AUTOCHECKOUT — Live Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <div class="scanlines"></div>
+  <div class="grid-bg"></div>
+
+  <div class="wrap">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="hex">⬡</span>
+        <div class="brand-text">
+          <h1>LAZADA<span class="accent">//</span>AUTOCHECKOUT</h1>
+          <span class="sub">live operations dashboard</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span id="pill-bot" class="pill pill-off">● DISARMED</span>
+        <span id="pill-test" class="pill pill-mute">TEST MODE</span>
+        <span id="pill-watch" class="pill pill-mute">WATCH OFF</span>
+        <span id="clock" class="clock">00:00:00</span>
+      </div>
+    </header>
+
+    <!-- Period filter -->
+    <div class="filters">
+      <div class="seg" id="period">
+        <button data-p="today" class="active">TODAY</button>
+        <button data-p="week">WEEK</button>
+        <button data-p="month">MONTH</button>
+        <button data-p="all">ALL</button>
+      </div>
+      <span id="conn" class="conn">◍ LIVE</span>
+    </div>
+
+    <!-- Stat cards -->
+    <section class="stats">
+      <div class="stat stat-green">
+        <div class="stat-ico">✔</div>
+        <div class="stat-body"><span id="s-checkouts" class="stat-num">0</span><span class="stat-label">CHECKOUTS</span></div>
+      </div>
+      <div class="stat stat-cyan">
+        <div class="stat-ico">$</div>
+        <div class="stat-body"><span id="s-spend" class="stat-num">$0.00</span><span class="stat-label">SPEND</span></div>
+      </div>
+      <div class="stat stat-magenta">
+        <div class="stat-ico">◈</div>
+        <div class="stat-body"><span id="s-live" class="stat-num">0</span><span class="stat-label">LIVE TASKS</span></div>
+      </div>
+      <div class="stat stat-amber">
+        <div class="stat-ico">◎</div>
+        <div class="stat-body"><span id="s-watching" class="stat-num">0</span><span class="stat-label">WATCHING</span></div>
+      </div>
+    </section>
+
+    <!-- Main grid -->
+    <section class="main">
+      <div class="panel panel-tasks">
+        <div class="panel-head"><h2>LIVE TASKS</h2><span id="tasks-count" class="tag">0</span></div>
+        <div class="table-head">
+          <span>SITE</span><span>PRODUCT</span><span>STATUS</span><span>UPDATED</span>
+        </div>
+        <div id="tasks" class="table-body">
+          <div class="empty">No active tasks. Arm the bot and add a watch URL.</div>
+        </div>
+      </div>
+
+      <div class="panel panel-feed">
+        <div class="panel-head"><h2>CHECKOUT FEED</h2><span id="wins-count" class="tag">0</span></div>
+        <div id="wins" class="feed">
+          <div class="empty">No checkouts yet.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Activity log -->
+    <section class="panel panel-log">
+      <div class="panel-head"><h2>ACTIVITY LOG</h2><button id="clear" class="mini-btn">CLEAR</button></div>
+      <div id="log" class="log">
+        <div class="empty">Waiting for events…</div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

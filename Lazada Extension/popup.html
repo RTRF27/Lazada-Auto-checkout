@@ -54,6 +54,107 @@
         </div>
       </section>
 
+      <!-- Direct Lazada watch -->
+      <section class="card">
+        <label class="row">
+          <div class="row-text">
+            <span class="row-title">Watch Lazada directly</span>
+            <span class="row-sub">Polls the product pages itself — no Discord needed</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="watchEnabled">
+            <span class="slider"></span>
+          </label>
+        </label>
+        <div class="field">
+          <label for="watchUrls">Product URLs to watch <span class="opt">one per line</span></label>
+          <textarea id="watchUrls" rows="3"
+            placeholder="https://www.lazada.sg/products/...-i123-s456.html&#10;https://www.lazada.sg/products/...-i789-s012.html"></textarea>
+          <p class="hint">Each URL is kept open in a background tab and auto-reloaded until it restocks, then Buy Now fires.</p>
+        </div>
+        <div class="field-inline sub">
+          <label for="watchHeartbeat">Re-open closed tabs every</label>
+          <div class="num"><input type="number" id="watchHeartbeat" min="1" step="1"><span class="unit">s</span></div>
+        </div>
+      </section>
+
+      <!-- Shop drop watch -->
+      <section class="card">
+        <label class="row">
+          <div class="row-text">
+            <span class="row-title">🎯 Shop drop watch</span>
+            <span class="row-sub">Refreshes a shop page & pounces on new releases</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="shopWatchEnabled">
+            <span class="slider"></span>
+          </label>
+        </label>
+
+        <div class="field">
+          <label for="shopUrls">Shop pages to watch <span class="opt">one per line</span></label>
+          <textarea id="shopUrls" rows="2"
+            placeholder="https://www.lazada.sg/shop/pokemon-store-online-singapore/?channelSource=pdp"></textarea>
+          <p class="hint">
+            Kept open in a background tab and reloaded on the interval below.
+            <b>Keep the <code>?…</code> query string</b> — the bare shop URL shows a
+            curated view that hides new releases.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="shopKeywords">Drop keywords <span class="opt">one per line</span></label>
+          <textarea id="shopKeywords" rows="3"
+            placeholder="first partner illustration&#10;mega evolution&#10;booster box"></textarea>
+          <p class="hint">
+            A line matches when <b>all</b> its words appear in the product name (any order).
+            Any line matching = go. Empty = every new listing.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="shopExcludeKeywords">Never buy if it contains <span class="opt">optional</span></label>
+          <textarea id="shopExcludeKeywords" rows="2"
+            placeholder="sleeve&#10;single card&#10;pre order"></textarea>
+          <p class="hint">Checked before the keywords above — a match here always wins.</p>
+        </div>
+
+        <div class="field-inline">
+          <label for="shopMaxPrice">Skip if price over</label>
+          <div class="num"><span class="unit">$</span><input type="number" id="shopMaxPrice" min="0" step="1"></div>
+        </div>
+        <p class="hint">0 = no price cap.</p>
+
+        <div class="field-inline">
+          <label for="shopRefresh">Refresh shop every</label>
+          <div class="num"><input type="number" id="shopRefresh" min="1.5" step="0.5"><span class="unit">s</span></div>
+        </div>
+
+        <div class="field-inline">
+          <label for="shopMaxOpen">Max items to open</label>
+          <div class="num"><input type="number" id="shopMaxOpen" min="1" step="1"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <label class="row">
+          <div class="row-text">
+            <span class="row-title">Only brand-new listings</span>
+            <span class="row-sub">Ignores everything already on the shop when armed</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="shopOnlyNew">
+            <span class="slider"></span>
+          </label>
+        </label>
+
+        <button id="rearmShopBtn" class="btn btn-ghost">🔄 Re-arm (reset baseline & opened items)</button>
+        <p class="hint">
+          Turning the watch on re-arms automatically. Use this after a test run, or to let
+          it buy the same item again.
+        </p>
+      </section>
+
       <!-- Timing -->
       <section class="card">
         <div class="field-inline">
@@ -77,6 +178,15 @@
           <label for="retryDelay">Retry delay</label>
           <div class="num"><input type="number" id="retryDelay" min="1" step="1"><span class="unit">s</span></div>
         </div>
+        <div class="field-inline sub">
+          <label for="productWatch">Watch window before reload</label>
+          <div class="num"><input type="number" id="productWatch" min="2" step="1"><span class="unit">s</span></div>
+        </div>
+        <p class="hint">
+          A pre-drop item only flips to <b>Buy Now</b> on a fresh page load, so
+          <b>watch window + retry delay = your worst-case lag</b> on a drop.
+          8s + 3s is a good balance; going much lower reloads hard enough to risk a captcha.
+        </p>
 
         <div class="divider"></div>
 
@@ -119,6 +229,7 @@
     </main>
 
     <footer class="app-footer">
+      <button id="dashboardBtn" class="btn btn-ghost">📊 Open Live Dashboard</button>
       <button id="saveBtn" class="btn btn-primary">Save settings</button>
       <p id="status" class="status"></p>
     </footer>

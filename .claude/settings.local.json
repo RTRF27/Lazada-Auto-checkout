@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('manifest.json','utf8'\\)\\); console.log\\('manifest.json OK'\\)\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(rm -f \"Lazada Extension/_preview.html\" .claude/launch.json)",
+      "Bash(rmdir .claude)",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "Bash(node --check discord-content-script.js)",
+      "Bash(node --check background.js)",
+      "Bash(node -e ' *)",
+      "Bash(ls \"C:\\\\Users\\\\reaga\\\\.claude\\\\projects\\\\C--Users-reaga-OneDrive-Desktop-Lazada-Auto-checkout\\\\memory\\\\\" 2>/dev/null && echo \"---MEMORY.md---\" && cat \"C:\\\\Users\\\\reaga\\\\.claude\\\\projects\\\\C--Users-reaga-OneDrive-Desktop-Lazada-Auto-checkout\\\\memory\\\\MEMORY.md\" 2>/dev/null || echo \"no memory yet\")",
+      "Bash(node --check lazada-content-script.js)"
+    ]
+  }
+}
