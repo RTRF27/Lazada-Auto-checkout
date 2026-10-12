@@ -54,6 +54,14 @@
       ],
       "js": ["lazada-content-script.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://wishlist.lazada.sg/*",
+        "https://www.lazada.sg/wishlist*"
+      ],
+      "js": ["wishlist-content-script.js"],
+      "run_at": "document_idle"
     }
   ]
 }

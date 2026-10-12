@@ -78,6 +78,37 @@
         </div>
       </section>
 
+      <!-- Wishlist monitor -->
+      <section class="card">
+        <label class="row">
+          <div class="row-text">
+            <span class="row-title">💖 Wishlist monitor</span>
+            <span class="row-sub">Alerts on price drops &amp; restocks. Alert-only; pauses on captcha.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="wishlistEnabled">
+            <span class="slider"></span>
+          </label>
+        </label>
+        <div class="field">
+          <label for="wishlistUrl">Wishlist page URL</label>
+          <input type="text" id="wishlistUrl" placeholder="https://wishlist.lazada.sg/">
+        </div>
+        <div class="field-inline">
+          <label for="wishlistInterval">Check every</label>
+          <div class="num"><input type="number" id="wishlistInterval" min="1" step="1"><span class="unit">min</span></div>
+        </div>
+        <div class="field-inline">
+          <label for="wishlistMinDrop">Min price drop to alert</label>
+          <div class="num"><input type="number" id="wishlistMinDrop" min="0" step="1"><span class="unit">%</span></div>
+        </div>
+        <label class="row"><div class="row-text"><span class="row-title">Price-drop alerts</span></div>
+          <label class="switch"><input type="checkbox" id="wishlistNotifyDrop"><span class="slider"></span></label></label>
+        <label class="row"><div class="row-text"><span class="row-title">Back-in-stock alerts</span></div>
+          <label class="switch"><input type="checkbox" id="wishlistNotifyStock"><span class="slider"></span></label></label>
+        <button type="button" id="wishlistResumeBtn" class="btn btn-ghost">Resume after captcha</button>
+      </section>
+
       <!-- Shop drop watch -->
       <section class="card">
         <label class="row">
