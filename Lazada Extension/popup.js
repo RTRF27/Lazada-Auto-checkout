@@ -25,6 +25,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         shopMaxOpen: document.getElementById("shopMaxOpen"),
         shopOnlyNew: document.getElementById("shopOnlyNew"),
         rearmShopBtn: document.getElementById("rearmShopBtn"),
+        wishlistEnabled: document.getElementById("wishlistEnabled"),
+        wishlistUrl: document.getElementById("wishlistUrl"),
+        wishlistInterval: document.getElementById("wishlistInterval"),
+        wishlistMinDrop: document.getElementById("wishlistMinDrop"),
+        wishlistNotifyDrop: document.getElementById("wishlistNotifyDrop"),
+        wishlistNotifyStock: document.getElementById("wishlistNotifyStock"),
+        wishlistResumeBtn: document.getElementById("wishlistResumeBtn"),
         saveBtn: document.getElementById("saveBtn"),
         status: document.getElementById("status"),
         runTestBtn: document.getElementById("runTestBtn"),
@@ -70,6 +77,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         els.shopRefresh.value = (s.shopRefreshMs ? s.shopRefreshMs / 1000 : 4);
         els.shopMaxOpen.value = s.shopMaxOpen ?? 3;
         els.shopOnlyNew.checked = s.shopOnlyNew ?? true;
+
+        els.wishlistEnabled.checked = s.wishlistEnabled ?? false;
+        els.wishlistUrl.value = s.wishlistUrl || "https://wishlist.lazada.sg/";
+        els.wishlistInterval.value = s.wishlistIntervalMin ?? 5;
+        els.wishlistMinDrop.value = s.wishlistMinDropPct ?? 0;
+        els.wishlistNotifyDrop.checked = s.wishlistNotifyDrop ?? true;
+        els.wishlistNotifyStock.checked = s.wishlistNotifyStock ?? true;
     });
 
     els.saveBtn.addEventListener("click", () => {
@@ -99,7 +113,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             // much better shot at a captcha that stops the whole run.
             shopRefreshMs: Math.max(1.5, parseFloat(els.shopRefresh.value) || 4) * 1000,
             shopMaxOpen: Math.max(1, parseInt(els.shopMaxOpen.value) || 3),
-            shopOnlyNew: els.shopOnlyNew.checked
+            shopOnlyNew: els.shopOnlyNew.checked,
+
+            wishlistEnabled: els.wishlistEnabled.checked,
+            wishlistUrl: els.wishlistUrl.value.trim() || "https://wishlist.lazada.sg/",
+            // Floored at 1 min — a wishlist doesn't change faster, and hammering it
+            // is what triggers the captcha in the first place.
+            wishlistIntervalMin: Math.max(1, parseInt(els.wishlistInterval.value) || 5),
+            wishlistMinDropPct: Math.max(0, parseFloat(els.wishlistMinDrop.value) || 0),
+            wishlistNotifyDrop: els.wishlistNotifyDrop.checked,
+            wishlistNotifyStock: els.wishlistNotifyStock.checked
         };
 
         chrome.storage.sync.set({ [KEY]: settings }, () => {
@@ -125,6 +148,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             els.status.style.color = "#3ba55d";
             setTimeout(() => els.status.textContent = "", 2500);
         });
+    });
+
+    els.wishlistResumeBtn.addEventListener("click", () => {
+        chrome.runtime.sendMessage({ type: "wishlist_resume" });
+        els.status.textContent = "▶ Wishlist monitor resumed.";
+        els.status.style.color = "#3ba55d";
+        setTimeout(() => els.status.textContent = "", 2000);
     });
 
     els.dashboardBtn.addEventListener("click", () => {

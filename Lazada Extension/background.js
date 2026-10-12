@@ -1,3 +1,5 @@
+importScripts("wishlist-monitor.js");
+
 // === SETTINGS ===
 const SETTINGS_KEY = "lazadaBotSettings";
 
@@ -48,7 +50,16 @@ const defaultSettings = {
   shopMaxPrice: 0,                  // 0 = no cap
   shopRefreshMs: 4000,              // shop listing reload interval
   shopOnlyNew: true,                // ignore listings present when the watch was armed
-  shopMaxOpen: 3                    // safety cap on product tabs opened per drop
+  shopMaxOpen: 3,                   // safety cap on product tabs opened per drop
+
+  // --- Wishlist monitor (alert-only; pauses itself on a captcha) ---
+  wishlistEnabled: false,
+  wishlistUrl: "https://wishlist.lazada.sg/",
+  wishlistIntervalMin: 5,           // floored at 1 min in wishlist-monitor.js
+  wishlistNotifyDrop: true,
+  wishlistNotifyStock: true,
+  wishlistMinDropPct: 0,
+  wishlistCloseTab: true
 };
 
 let lastTabOpenTs = 0;
