@@ -86,6 +86,32 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// Resolve on the first DOM change (after at least minMs) or after maxMs,
+// whichever comes first. Unlike a bare setTimeout poll this isn't throttled to
+// ~1/s in background tabs, and reacts the moment React re-renders a button
+// instead of up to one poll interval later.
+function waitForDomChange(maxMs, minMs = 30) {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    let timer;
+    const obs = new MutationObserver(() => {
+      if (performance.now() - start >= minMs) done();
+    });
+    function done() {
+      obs.disconnect();
+      clearTimeout(timer);
+      resolve();
+    }
+    obs.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true,
+    });
+    timer = setTimeout(done, maxMs);
+  });
+}
+
 async function mediumDelay() {
   return wait(randInt(200, 600));
 }
@@ -410,69 +436,45 @@ function isClickable(el) {
 //  CHECKOUT PAGE – PLACE ORDER NOW (simple + debug)
 // ===========================================================
 
-function findPlaceOrderMatches() {
-  const divs = Array.from(document.querySelectorAll("div"));
-  const matches = [];
+// Find the Place Order button by walking TEXT nodes (cheap — no layout) instead
+// of reading innerText on every <div>. The old div scan also matched every
+// wrapper around the button, so when the label wasn't exactly "PLACE ORDER NOW"
+// it clicked the centre of the outermost page container and nothing happened.
+const PLACE_ORDER_RE = /^\s*place\s+order\b/i;
 
-  for (const el of divs) {
-    const raw = (el.innerText || "").trim();
-    if (!raw) continue;
-
-    if (raw.toUpperCase().includes("PLACE ORDER")) {
-      matches.push({
-        el,
-        text: raw,
-        spm: el.getAttribute("data-spm-anchor-id") || "",
-        cls: el.className || "",
-      });
-    }
+function findPlaceOrderButton() {
+  if (!document.body) return null;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) =>
+      n.nodeValue.length < 40 && PLACE_ORDER_RE.test(n.nodeValue)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP,
+  });
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const el = n.parentElement;
+    if (!el || !el.getClientRects().length) continue; // not rendered
+    const target = el.closest("button, [role='button'], a") || el;
+    // Lazada's checkout button is a styled <div>, and the "disabled" class can
+    // sit on any wrapper above the text, so check a few ancestors too.
+    let ok = isClickable(target);
+    for (let a = el, i = 0; ok && a && i < 4; a = a.parentElement, i++) ok = isClickable(a);
+    if (ok) return target;
   }
-
-  // Console-only (NOT logBG) — this runs every ~150ms while polling, so sending
-  // it to the Discord webhook spammed ~200 messages per checkout and risked
-  // rate-limiting the important @here success/captcha/OC3 pings.
-  if (matches.length) {
-    const preview = matches
-      .slice(0, 5)
-      .map((m, i) => `#${i + 1}: text="${m.text}" spm="${m.spm}" class="${m.cls}"`)
-      .join("\n");
-    log(`🔎 PLACE ORDER matches (${matches.length}):\n${preview}`);
-  }
-
-  return matches;
+  return null;
 }
 
-function pickPlaceOrderButton() {
-  const matches = findPlaceOrderMatches();
-  if (!matches.length) return null;
-
-  // Prefer an exact text match
-  const exact = matches.find(m => m.text.trim().toUpperCase() === "PLACE ORDER NOW");
-  return (exact || matches[0]).el;
-}
-
-async function waitForPlaceOrder() {
-  const timeout = 30000;
+// Waits for a clickable Place Order button, reacting to DOM changes instead of
+// polling. Requires the checkout container too (the old readiness signal), so we
+// don't click before React has mounted the order summary.
+async function waitForPlaceOrder(timeout = 30000) {
   const start = performance.now();
-  let attempts = 0;
-
   while (performance.now() - start < timeout) {
-    attempts++;
-
-    const btn = pickPlaceOrderButton();
-    if (btn) {
-      logBG(`🟢 PLACE ORDER button chosen after ${attempts} attempts.`);
-      return btn;
+    if (document.querySelector("#container_10008, .checkout-order-total")) {
+      const btn = findPlaceOrderButton();
+      if (btn) return btn;
     }
-
-    if (attempts % 5 === 0) {
-      const elapsed = Math.round(performance.now() - start);
-      //logBG(`⌛ Still searching PLACE ORDER NOW (attempt ${attempts}, elapsed ${elapsed}ms)`);
-    }
-
-    await wait(150);
+    await waitForDomChange(250, 0);
   }
-
   return null;
 }
 
@@ -516,13 +518,18 @@ async function runProductFlow() {
   const watchMs = lazSettings?.productWatchMs || 20000;
   const deadline = performance.now() + watchMs;
   let ticks = 0;
+  let lastHtmlCheck = 0;
 
   while (performance.now() < deadline) {
     ticks++;
 
     // Bail out if the page navigated to a captcha/punish page mid-watch, or if
     // an inline verification appeared. A human takes over from here.
-    if (isPunishCaptchaPage() || isBlockedByHtml()) {
+    // isBlockedByHtml() serializes the whole document, so only run it ~1/s now
+    // that the loop wakes on every DOM change.
+    const checkHtml = performance.now() - lastHtmlCheck > 1000;
+    if (checkHtml) lastHtmlCheck = performance.now();
+    if (isPunishCaptchaPage() || (checkHtml && isBlockedByHtml())) {
       logBG("🧩 Captcha appeared during product watch — alerting human, stopping flow.");
       showCaptchaAlert();
       return;
@@ -533,13 +540,15 @@ async function runProductFlow() {
     if (buyNowBtn && isClickable(buyNowBtn)) {
       // Remember this product URL so checkout can return here to re-watch if the
       // item sells out at the payment page (OC3 / out of stock).
+      buyNowBtn.scrollIntoView({ behavior: "instant", block: "center" });
+      realHumanClick(buyNowBtn, "BuyNow");
+      // Saved after the click so the storage write isn't on the critical path.
+      // lazBuyNowTs lets the checkout page report end-to-end Buy Now → Place Order time.
       try {
-        chrome.storage.local.set({ lazLastProductUrl: location.href });
+        chrome.storage.local.set({ lazLastProductUrl: location.href, lazBuyNowTs: Date.now() });
       } catch (e) {
         console.warn("[LazadaBot CS] could not save product URL:", e);
       }
-      buyNowBtn.scrollIntoView({ behavior: "instant", block: "center" });
-      realHumanClick(buyNowBtn, "BuyNow");
       logBG(`✅ Buy Now clicked after ${ticks} checks!`);
       logBG("@here 🛒 Buy Now clicked — checkout needs attention now!");
       reportStatus("buy_now");
@@ -564,7 +573,7 @@ async function runProductFlow() {
       }
     }
 
-    await wait(pollMs);
+    await waitForDomChange(pollMs);
   }
 
   // Window elapsed with no clickable Buy Now → fast reload to fetch fresh stock.
@@ -575,28 +584,6 @@ async function runProductFlow() {
 // ===========================================================
 //  CHECKOUT PAGE – PLACE ORDER NOW
 // ===========================================================
-
-// Very aggressive finder based on the exact element you showed me
-
-async function waitForCheckoutUI() {
-  const timeout = 20000;
-  const start = performance.now();
-
-  // Removed the random @here spam from the loop
-  while (performance.now() - start < timeout) {
-    const node = document.querySelector("#container_10008, .checkout-order-total");
-
-    if (node) {
-      logBG("🟢 Checkout UI container detected (React mounted).");
-      return true;
-    }
-
-    await wait(200);
-  }
-
-  logBG("❌ Checkout UI container NOT detected.");
-  return false;
-}
 
 // Detect the checkout-time out-of-stock failure (Lazada reason code OC3, shown
 // after Buy Now when the item sells out before Place Order completes). Returns a
@@ -680,41 +667,41 @@ async function runCheckoutFlow() {
   reportStatus("checkout");
   reportEvent("checkout", "💳 Checkout page reached");
 
-  const uiReady = await waitForCheckoutUI();
-  if (!uiReady) return;
-
-  await wait(500);
-
-  // The item may already be flagged out of stock before we even click.
-  const preError = getCheckoutStockError();
-  if (preError) {
-    await handleCheckoutOutOfStock(preError);
-    return;
-  }
-
-  logBG("🔍 Lazada UI ready — searching for PLACE ORDER NOW…");
-
-  logBG("🔍 Searching for PLACE ORDER NOW…");
+  // No fixed waits here: every ms between the button rendering and the click is
+  // a ms another buyer can take the stock. OOS/OC3 is still caught after the
+  // click by watchForCheckoutStockError().
   const btn = await waitForPlaceOrder();
+  const foundAt = performance.now();
 
   if (!btn) {
-    logBG("❌ PLACE ORDER NOW button NOT FOUND after timeout.");
+    logBG("❌ PLACE ORDER button NOT FOUND after timeout.");
+    // It may never have rendered because the item is already out of stock.
+    const reason = getCheckoutStockError();
+    if (reason) await handleCheckoutOutOfStock(reason);
     return;
   }
 
   log("[Checkout] PLACE ORDER element:", btn);
-  logBG("💳 PLACE ORDER NOW button FOUND — scrolling & clicking…");
-
-  btn.scrollIntoView({ behavior: "smooth", block: "center" });
-  await wait(randInt(200, 400));
 
   if (lazSettings?.testMode) {
-    logBG("🧪 TEST MODE — skipping PLACE ORDER click.");
+    logBG(`🧪 TEST MODE — PLACE ORDER found ${Math.round(foundAt)}ms after page start; skipping click.`);
     return;
   }
 
+  btn.scrollIntoView({ behavior: "instant", block: "center" });
   realHumanClick(btn, "PlaceOrder");
-  logBG("✅ PLACE ORDER click dispatched!");
+  const clickedAt = performance.now();
+
+  // performance.now() is measured from this page's navigation start, so these
+  // numbers show how much of the checkout time is Lazada's page load vs us.
+  chrome.storage.local.get("lazBuyNowTs").then((saved) => {
+    const ts = saved?.lazBuyNowTs;
+    const total = ts && Date.now() - ts < 60000 ? `, ${Date.now() - ts}ms since Buy Now` : "";
+    logBG(
+      `✅ PLACE ORDER clicked — ${Math.round(clickedAt)}ms after checkout page start ` +
+      `(button ready at ${Math.round(foundAt)}ms${total}).`
+    );
+  }).catch(() => {});
 
   // After clicking, either the order succeeds (page navigates to the success
   // page) or Lazada blocks it with an OOS/OC3 error. Watch for the error; if it
