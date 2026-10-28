@@ -320,7 +320,7 @@ async function processShopHit(msg) {
 
   const label = msg.title || shortLabelFromUrl(msg.url);
   log("Opening drop item from shop watch:", { id: msg.id, url: msg.url });
-  await sendLog(`@here 🎯 DROP MATCH — opening ${label}${msg.price != null ? ` ($${msg.price})` : ""}`);
+  sendLog(`@here 🎯 DROP MATCH — opening ${label}${msg.price != null ? ` ($${msg.price})` : ""}`);
   recordEvent({
     kind: "buy_now",
     message: `🎯 Drop match — opening ${label}`,
@@ -653,7 +653,7 @@ async function handleRestockLink(msg, sender) {
   }
 
   const displayTitle = (msg.title || "").trim();  
-  await sendLog(`📩 Detected restock: ${displayTitle || url}`);
+  sendLog(`📩 Detected restock: ${displayTitle || url}`);
 
   // keyword filter
   const kws = (settings.keywords || []).map(k => k.trim()).filter(Boolean);
@@ -676,7 +676,7 @@ async function handleRestockLink(msg, sender) {
   lastTabOpenTs = now;
 
   log("Opening Lazada URL from Discord:", { url, keyword, channelId });
-  await sendLog(`🟦 Opening Lazada product page for checkout.`);
+  sendLog(`🟦 Opening Lazada product page for checkout.`);
   chrome.tabs.create({ url, active: true }, tab => {
   if (chrome.runtime.lastError) {
     console.error("[LazadaBot BG] tab.create error:", chrome.runtime.lastError.message);
