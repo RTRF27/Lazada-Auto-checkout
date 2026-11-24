@@ -92,7 +92,29 @@
   }
   body.go #buy:active { filter: brightness(.92); }
 
-  .sound-hint { position: fixed; bottom: 128px; left: 0; right: 0; text-align: center; font-size: 13px; color: #444; }
+  /* ---------- tap feedback ---------- */
+  .ripple {
+    position: fixed; width: 90px; height: 90px; margin: -45px 0 0 -45px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.9); background: rgba(255,255,255,.18);
+    pointer-events: none; z-index: 30; animation: ripple .38s ease-out forwards;
+  }
+  @keyframes ripple { from { transform: scale(.25); opacity: 1; } to { transform: scale(1.3); opacity: 0; } }
+  #buy.hit { animation: buyhit .14s ease-out; }
+  @keyframes buyhit {
+    from { background: rgba(255,255,255,.35); border-color: #fff; color: #fff; transform: scale(.96); }
+    to   { transform: scale(1); }
+  }
+  body.go #buy.hit { animation: buyhitgo .14s ease-out; }
+  @keyframes buyhitgo { from { filter: brightness(1.35); transform: scale(.96); } to { filter: none; transform: scale(1); } }
+  .tap-count {
+    position: fixed; left: 28.2%; width: 33.1%; bottom: 124px; text-align: center;
+    font: 700 18px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #9a9a9a;
+    font-variant-numeric: tabular-nums; pointer-events: none; opacity: 0; transition: opacity .3s;
+  }
+  .tap-count.on { opacity: 1; }
+  body.go .tap-count { color: #fff; }
+
+  .sound-hint { position: fixed; bottom: 156px; left: 0; right: 0; text-align: center; font-size: 13px; color: #444; }
   body.go .sound-hint { color: rgba(255,255,255,.6); }
 
   /* ---------- products sheet ---------- */
@@ -168,6 +190,7 @@
 </div>
 
 <a id="buy" target="_blank" rel="noopener">Buy Now</a>
+<div class="tap-count" id="tapCount"></div>
 <div class="sound-hint" id="soundHint">Tap anywhere once to turn on the alert sound</div>
 
 <div class="backdrop" id="sheetBackdrop">
@@ -303,6 +326,33 @@
     lastBuyTap = now;
   });
   $("clearBtn").addEventListener("click", clearAlert);
+
+  // Tap feedback: a ring wherever a finger lands (every finger, instantly on
+  // touch-down), a flash on BUY NOW, and a live tap counter above it.
+  const buyEl = $("buy"), countEl = $("tapCount");
+  let taps = [], tapTotal = 0, countHide = null;
+  document.addEventListener("pointerdown", e => {
+    if (e.target.closest(".backdrop")) return; // not inside the products sheet
+    const r = document.createElement("div");
+    r.className = "ripple";
+    r.style.left = e.clientX + "px";
+    r.style.top = e.clientY + "px";
+    r.addEventListener("animationend", () => r.remove());
+    document.body.appendChild(r);
+    while (document.querySelectorAll(".ripple").length > 24) document.querySelector(".ripple").remove();
+
+    if (e.target.closest("#buy")) {
+      buyEl.classList.remove("hit"); void buyEl.offsetWidth; buyEl.classList.add("hit");
+      const now = performance.now();
+      tapTotal++;
+      taps.push(now);
+      taps = taps.filter(t => now - t < 1000);
+      countEl.textContent = `${tapTotal} taps · ${taps.length}/s`;
+      countEl.classList.add("on");
+      clearTimeout(countHide);
+      countHide = setTimeout(() => { countEl.classList.remove("on"); tapTotal = 0; taps = []; }, 2500);
+    }
+  }, { passive: true });
 
   // ---------- sound (iOS needs one tap to unlock audio) ----------
   let audioCtx = null;
