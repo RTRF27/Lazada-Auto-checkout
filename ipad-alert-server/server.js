@@ -290,7 +290,7 @@ async function handle(req, res) {
     }
     publishAlert({
       id: `${Date.now()}-test`,
-      name: "Test product",
+      name: cleanName(body.name) || "Test product",
       url: testUrl || DEFAULT_TEST_URL,
       price: "$0.00",
       stock: "In Stock (test)",

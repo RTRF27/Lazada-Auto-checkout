@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 340px; margin: 0; padding: 14px; background: #111; color: #eee; font: 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 15px; margin: 0 0 10px; }
+  .status { padding: 8px 10px; border-radius: 8px; background: #1b1b1b; border: 1px solid #2a2a2a; margin-bottom: 12px; }
+  .status div { display: flex; gap: 6px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; flex: none; }
+  .dot.ok { background: #22c55e; } .dot.bad { background: #ef4444; } .dot.warn { background: #f59e0b; }
+  label { display: block; color: #999; margin: 8px 0 4px; }
+  input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid #333; background: #0b0b0b; color: #eee; font-size: 13px; outline: none; }
+  input:focus { border-color: #555; }
+  button { width: 100%; margin-top: 12px; height: 40px; border: 0; border-radius: 8px; background: #22c55e; color: #052e12; font-size: 14px; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: default; }
+  .msg { margin-top: 10px; min-height: 18px; color: #aaa; }
+  .msg.ok { color: #4ade80; } .msg.bad { color: #f87171; }
+  .hint { margin-top: 10px; color: #777; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>Send a test product to the iPad</h1>
+  <div class="status">
+    <div><span class="dot" id="dServer"></span><span id="tServer">Checking server…</span></div>
+    <div><span class="dot" id="dDiscord"></span><span id="tDiscord"></span></div>
+  </div>
+  <label for="url">Lazada product link</label>
+  <input id="url" type="url" spellcheck="false">
+  <label for="name">Name shown on the iPad (optional)</label>
+  <input id="name" type="text" placeholder="Test product">
+  <button id="send">Send to iPad</button>
+  <div class="msg" id="msg"></div>
+  <div class="hint">Tip: right-click any Lazada product page or link → <b>Send to iPad screen</b>.</div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -36,6 +36,17 @@ Nothing here buys or clicks anything: you tap BUY NOW yourself.
    products, then **Send test alert** to check the screen goes green.
    Set iPad *Settings → Display & Brightness → Auto-Lock → Never*.
 
+## Sending a test product from the PC
+
+- **Extension popup:** click the *Discord Restock Relay* icon in Chrome (pin it
+  from the puzzle-piece menu), check the link, press **Send to iPad**. The
+  popup also shows whether the server is running, how many iPads are open,
+  and whether Discord is being watched.
+- **Right-click:** on any Lazada product page or product link (also inside
+  Discord), choose **Send to iPad screen**. The icon shows *sent* or *err*.
+
+The iPad turns green and BUY NOW opens that product, like a real restock.
+
 ## What the status line means
 
 | iPad shows | Fix |
