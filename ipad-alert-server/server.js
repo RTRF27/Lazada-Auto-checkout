@@ -166,7 +166,7 @@ function broadcast(event, data) {
 }
 
 function publishAlert(alert) {
-  if (!products.includes(alert.name)) {
+  if (!alert.test && !products.includes(alert.name)) {
     products.push(alert.name);
     saveProducts();
     log("New product added to list:", alert.name);

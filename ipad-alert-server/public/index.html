@@ -60,7 +60,7 @@
 
   .center {
     position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 160px 24px 220px; text-align: center; pointer-events: none;
+    padding: 160px 24px 170px; text-align: center; pointer-events: none;
   }
   .idle-msg { color: #3a3a3a; font-size: 20px; }
   .alert-card { display: none; max-width: 760px; }
@@ -75,19 +75,24 @@
   .ignored { margin-top: 18px; color: #555; font-size: 15px; min-height: 1.4em; }
   body.go .ignored { color: rgba(255,255,255,.7); }
 
-  .buy-wrap { position: fixed; left: 0; right: 0; bottom: max(40px, env(safe-area-inset-bottom)); display: flex; justify-content: center; padding: 0 16px; }
+  /* Same spot and size as the orange "Buy Now" in the Lazada app on this iPad
+     (measured from a full-screen app screenshot, 834x1194pt): left 28.2%,
+     width 33.1%, 26pt above the bottom edge, 91pt tall. After BUY NOW opens
+     the product, your finger is already on Lazada's Buy Now. Bottom-anchored
+     so it lines up in Safari too (Safari's bar is at the top). */
   #buy {
-    display: grid; place-items: center; width: min(460px, 100%); height: 130px; border-radius: 22px;
-    border: 3px dashed #262626; color: #262626; font-size: 22px; font-weight: 800; letter-spacing: .3em;
+    position: fixed; left: 28.2%; width: 33.1%; bottom: 26px; height: 91px;
+    display: grid; place-items: center; border-radius: 0;
+    border: 3px dashed #2e2e2e; color: #2e2e2e; font-size: 24px; font-weight: 800; letter-spacing: .02em;
     text-decoration: none; cursor: pointer;
   }
   body.go #buy {
-    border: 0; background: #fff; color: var(--green-deep); font-size: 34px; letter-spacing: .18em;
-    box-shadow: 0 10px 40px rgba(0,0,0,.35);
+    border: 0; background: #f2ad3c; color: #fff; font-size: 30px;
+    box-shadow: 0 0 0 4px #fff, 0 10px 40px rgba(0,0,0,.35);
   }
-  body.go #buy:active { transform: scale(.98); }
+  body.go #buy:active { filter: brightness(.92); }
 
-  .sound-hint { position: fixed; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 13px; color: #444; }
+  .sound-hint { position: fixed; bottom: 128px; left: 0; right: 0; text-align: center; font-size: 13px; color: #444; }
   body.go .sound-hint { color: rgba(255,255,255,.6); }
 
   /* ---------- products sheet ---------- */
@@ -162,7 +167,7 @@
   <div class="ignored" id="ignored"></div>
 </div>
 
-<div class="buy-wrap"><a id="buy" target="_blank" rel="noopener">BUY NOW</a></div>
+<a id="buy" target="_blank" rel="noopener">Buy Now</a>
 <div class="sound-hint" id="soundHint">Tap anywhere once to turn on the alert sound</div>
 
 <div class="backdrop" id="sheetBackdrop">
@@ -274,6 +279,7 @@
   function onAlert(a, replay) {
     if (!a || shown.has(a.id)) return;
     shown.add(a.id);
+    if (a.test) return goGreen(a);
     if (!products.includes(a.name)) products.push(a.name);
     let isNew = false;
     if (hidden.has(a.name)) { hidden.delete(a.name); delete ticks[a.name]; }
@@ -282,7 +288,6 @@
     renderStatus();
     if ($("sheetBackdrop").classList.contains("open")) renderList();
 
-    if (a.test) return goGreen(a);
     if (!a.inStock) { $("ignored").textContent = `Out of stock post ignored: ${a.name} (${fmtTime(a.receivedAt)})`; return; }
     if (ticks[a.name]) return goGreen(a);
     $("ignored").textContent = `${isNew ? "New product, not ticked" : "Unticked"}: ${a.name} (${fmtTime(a.receivedAt)})`;

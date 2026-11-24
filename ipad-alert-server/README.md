@@ -29,7 +29,10 @@ Nothing here buys or clicks anything: you tap BUY NOW yourself.
 2. On the iPad (same Wi-Fi) open the address the window prints, e.g.
    `http://192.172.4.214/`. Your bookmarked IP keeps working as long as the PC's
    IP hasn't changed.
-3. On the iPad: tap once anywhere (turns on the alert sound), tap ⚙ to tick
+3. BUY NOW sits in the same spot and size as the orange Buy Now in the Lazada
+   app (measured on this iPad in portrait). After it opens the product, tap
+   the same place again to hit Lazada's Buy Now.
+4. On the iPad: tap once anywhere (turns on the alert sound), tap ⚙ to tick
    products, then **Send test alert** to check the screen goes green.
    Set iPad *Settings → Display & Brightness → Auto-Lock → Never*.
 
