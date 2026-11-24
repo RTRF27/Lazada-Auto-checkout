@@ -17,6 +17,8 @@ const DATA_DIR = path.join(__dirname, "data");
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const INDEX_FILE = path.join(__dirname, "public", "index.html");
 const HEARTBEAT_MS = 10000;
+// Product the "Send test alert" button uses unless the iPad sends another link.
+const DEFAULT_TEST_URL = "https://www.lazada.sg/products/pdp-i14029408090-s125116592243.html?spm=a2o42.10453684.0.0.31a45edfJFVQkK&search=store";
 
 // Starting list. Anything the channel posts that isn't here gets added.
 const SEED_PRODUCTS = [
@@ -278,10 +280,18 @@ async function handle(req, res) {
 
   // "Send test alert" button on the iPad.
   if (route === "POST /test") {
+    let body = {};
+    try {
+      body = await readBody(req, 8192);
+    } catch (_) {}
+    const testUrl = String(body.url || "").trim();
+    if (testUrl && !isLazadaProductUrl(testUrl)) {
+      return sendJson(res, 400, { error: "That isn't a lazada.sg product link" });
+    }
     publishAlert({
       id: `${Date.now()}-test`,
-      name: "Test alert",
-      url: "https://www.lazada.sg/products/pdp-i13995598761-s125046045770.html",
+      name: "Test product",
+      url: testUrl || DEFAULT_TEST_URL,
       price: "$0.00",
       stock: "In Stock (test)",
       inStock: true,

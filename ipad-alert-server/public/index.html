@@ -156,6 +156,11 @@
   .btn.small { flex: none; min-width: 0; height: 44px; padding: 0 16px; font-size: 15px; }
   .test-row { display: flex; align-items: center; gap: 12px; padding: 14px 0 18px; color: var(--muted); font-size: 15px; border-top: 1px solid var(--line); }
   .test-row span { flex: 1; }
+  .test-url { padding: 18px 0 0; border-top: 1px solid var(--line); }
+  .test-url label { display: block; font-size: 15px; color: var(--muted); margin-bottom: 8px; }
+  .test-url input { width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: #0d0d0d; color: var(--text); font-size: 16px; outline: none; }
+  .test-url input:focus { border-color: #444; }
+  .test-url + .test-row { border-top: 0; }
 </style>
 </head>
 <body>
@@ -206,6 +211,10 @@
       </div>
       <input class="search" id="search" type="search" placeholder="Search products…" autocomplete="off">
       <ul class="list" id="list"></ul>
+      <div class="test-url">
+        <label for="testUrl">Test product link (BUY NOW opens this on a test alert)</label>
+        <input id="testUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://www.lazada.sg/products/pdp-i14029408090-s125116592243.html?spm=a2o42.10453684.0.0.31a45edfJFVQkK&search=store">
+      </div>
       <div class="test-row"><span id="testInfo">Check the whole chain: PC → this screen.</span><button class="btn small" id="testBtn">Send test alert</button></div>
     </div>
     <footer>
@@ -219,7 +228,8 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const KEYS = { ticks: "restockScreen.ticks", hidden: "restockScreen.hidden", autoNew: "restockScreen.autoNew" };
+  const DEFAULT_TEST_URL = "https://www.lazada.sg/products/pdp-i14029408090-s125116592243.html?spm=a2o42.10453684.0.0.31a45edfJFVQkK&search=store";
+  const KEYS = { testUrl: "restockScreen.testUrl", ticks: "restockScreen.ticks", hidden: "restockScreen.hidden", autoNew: "restockScreen.autoNew" };
   const ALERT_HOLD_MS = 5 * 60 * 1000;   // stay green this long unless cleared
   const RECENT_MS = 2 * 60 * 1000;        // replay a missed alert on reconnect if this fresh
   const STALE_MS = 25 * 1000;             // no message for this long -> reconnect
@@ -451,7 +461,7 @@
       li.append(cb, nm, rm); ul.appendChild(li);
     }
   }
-  function openSheet() { $("autoNew").checked = autoNew; $("search").value = ""; renderList(); $("sheetBackdrop").classList.add("open"); }
+  function openSheet() { $("testUrl").value = load(KEYS.testUrl, DEFAULT_TEST_URL); $("autoNew").checked = autoNew; $("search").value = ""; renderList(); $("sheetBackdrop").classList.add("open"); }
   function closeSheet() { $("sheetBackdrop").classList.remove("open"); }
   $("settingsBtn").onclick = openSheet;
   $("done").onclick = closeSheet;
@@ -461,10 +471,13 @@
   $("selAll").onclick = () => { filtered().forEach(p => ticks[p] = true); persist(); renderList(); renderStatus(); };
   $("selNone").onclick = () => { filtered().forEach(p => ticks[p] = false); persist(); renderList(); renderStatus(); };
   $("testBtn").onclick = async () => {
+    const url = $("testUrl").value.trim() || DEFAULT_TEST_URL;
+    save(KEYS.testUrl, url);
     $("testInfo").textContent = "Sending…";
     try {
-      const r = await fetch("/test", { method: "POST" });
+      const r = await fetch("/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
       const d = await r.json();
+      if (!r.ok) { $("testInfo").textContent = d.error || "Test failed."; return; }
       $("testInfo").textContent = `Sent to ${d.screens} screen(s). This one should be green now.`;
       closeSheet();
     } catch (_) { $("testInfo").textContent = "Couldn't reach the PC."; }
