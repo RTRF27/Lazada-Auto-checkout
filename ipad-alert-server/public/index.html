@@ -106,9 +106,18 @@
   }
   body.go #buy.hit { animation: buyhitgo .14s ease-out; }
   @keyframes buyhitgo { from { filter: brightness(1.35); transform: scale(.96); } to { filter: none; transform: scale(1); } }
+  /* Live clicks-per-second inside BUY NOW while you tap */
+  #buy { grid-template-rows: auto; align-content: center; gap: 0; overflow: hidden; }
+  #buy .buy-label, #buy .buy-cps { pointer-events: none; line-height: 1; }
+  #buy .buy-cps { display: none; font-size: 40px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  #buy .buy-cps small { font-size: 18px; font-weight: 700; margin-left: 2px; opacity: .85; }
+  #buy.counting { color: #e8e8e8; border-color: #8a8a8a; }
+  #buy.counting .buy-label { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; opacity: .8; margin-bottom: 4px; }
+  #buy.counting .buy-cps { display: block; }
+  body.go #buy.counting { color: #fff; }
   .tap-count {
     position: fixed; left: 28.2%; width: 33.1%; bottom: 124px; text-align: center;
-    font: 700 18px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #9a9a9a;
+    font: 700 18px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #b0b0b0;
     font-variant-numeric: tabular-nums; pointer-events: none; opacity: 0; transition: opacity .3s;
   }
   .tap-count.on { opacity: 1; }
@@ -194,7 +203,7 @@
   <div class="ignored" id="ignored"></div>
 </div>
 
-<a id="buy" target="_blank" rel="noopener">Buy Now</a>
+<a id="buy" target="_blank" rel="noopener"><span class="buy-label">Buy Now</span><span class="buy-cps" id="buyCps">0<small>/s</small></span></a>
 <div class="tap-count" id="tapCount"></div>
 <div class="sound-hint" id="soundHint">Tap anywhere once to turn on the alert sound</div>
 
@@ -338,9 +347,26 @@
   $("clearBtn").addEventListener("click", clearAlert);
 
   // Tap feedback: a ring wherever a finger lands (every finger, instantly on
-  // touch-down), a flash on BUY NOW, and a live tap counter above it.
-  const buyEl = $("buy"), countEl = $("tapCount");
-  let taps = [], tapTotal = 0, countHide = null;
+  // touch-down), a flash on BUY NOW, a live clicks-per-second number inside
+  // BUY NOW, and "taps · best" above it. Best speed is remembered on this iPad.
+  const buyEl = $("buy"), countEl = $("tapCount"), cpsEl = $("buyCps");
+  const CPS_WINDOW_MS = 1000, IDLE_RESET_MS = 4000;
+  let taps = [], tapTotal = 0, lastTapAt = 0, best = Number(load("restockScreen.bestCps", 0)) || 0;
+
+  function renderCps() {
+    const now = performance.now();
+    taps = taps.filter(t => now - t < CPS_WINDOW_MS);
+    const cps = taps.length;
+    if (cps > best) { best = cps; save("restockScreen.bestCps", best); }
+    cpsEl.firstChild.nodeValue = String(cps);
+    countEl.textContent = `${tapTotal} taps · best ${best}/s`;
+    if (lastTapAt && now - lastTapAt > IDLE_RESET_MS) {
+      buyEl.classList.remove("counting");
+      countEl.classList.remove("on");
+      tapTotal = 0; lastTapAt = 0;
+    }
+  }
+  setInterval(() => { if (lastTapAt) renderCps(); }, 100);
   document.addEventListener("pointerdown", e => {
     if (e.target.closest(".backdrop")) return; // not inside the products sheet
     const r = document.createElement("div");
@@ -353,14 +379,12 @@
 
     if (e.target.closest("#buy")) {
       buyEl.classList.remove("hit"); void buyEl.offsetWidth; buyEl.classList.add("hit");
-      const now = performance.now();
+      lastTapAt = performance.now();
       tapTotal++;
-      taps.push(now);
-      taps = taps.filter(t => now - t < 1000);
-      countEl.textContent = `${tapTotal} taps · ${taps.length}/s`;
+      taps.push(lastTapAt);
+      buyEl.classList.add("counting");
       countEl.classList.add("on");
-      clearTimeout(countHide);
-      countHide = setTimeout(() => { countEl.classList.remove("on"); tapTotal = 0; taps = []; }, 2500);
+      renderCps();
     }
   }, { passive: true });
 
